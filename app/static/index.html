@@ -148,8 +148,16 @@
     .text-sm { font-size: 12px; color: var(--text-muted); }
     .spin { animation: spin 1s linear infinite; display: inline-block; }
     @keyframes spin { to { transform: rotate(360deg); } }
-    .filter-row { display: flex; gap: 10px; margin-bottom: 16px; align-items: center; }
+    .filter-row { display: flex; gap: 10px; margin-bottom: 16px; align-items: center; flex-wrap: wrap; }
     .filter-row select, .filter-row input { max-width: 200px; }
+    .filter-group { display: flex; align-items: center; gap: 6px; }
+    .filter-group label { font-size: 12px; color: var(--text-muted); white-space: nowrap; }
+
+    /* SORTABLE HEADERS */
+    th.sortable { cursor: pointer; user-select: none; }
+    th.sortable:hover { color: var(--text); background: #2d3f55; }
+    th.sort-asc::after { content: ' ▲'; font-size: 10px; color: var(--primary); }
+    th.sort-desc::after { content: ' ▼'; font-size: 10px; color: var(--primary); }
 
     /* SYNC STATUS BAR */
     .sync-bar {
@@ -360,30 +368,55 @@
   <!-- DOCUMENTS -->
   <div class="page" id="page-files">
     <h2>Documentos</h2>
-    <div class="filter-row" style="flex-wrap:wrap;gap:8px">
-      <select id="filter-tipo" onchange="filterTable()">
-        <option value="">Todos os tipos</option>
-        <option value="nfe">NF-e</option>
-        <option value="cte">CT-e</option>
-      </select>
-      <input type="text" id="filter-search" placeholder="Chave, emitente ou destinatário..." oninput="filterTable()" style="max-width:260px"/>
-      <div style="display:flex;align-items:center;gap:6px">
-        <label style="font-size:12px;color:var(--text-muted);white-space:nowrap">De:</label>
+
+    <div class="filter-row">
+      <div class="filter-group">
+        <label>Tipo:</label>
+        <select id="filter-tipo" onchange="filterTable()" style="max-width:120px">
+          <option value="">Todos</option>
+          <option value="nfe">NF-e</option>
+          <option value="cte">CT-e</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label>Chave/NSU:</label>
+        <input type="text" id="filter-chave" placeholder="44 dígitos..." oninput="filterTable()" style="max-width:200px"/>
+      </div>
+      <div class="filter-group">
+        <label>Emitente:</label>
+        <input type="text" id="filter-emitente" placeholder="Nome ou CNPJ" oninput="filterTable()" style="max-width:180px"/>
+      </div>
+      <div class="filter-group">
+        <label>Destinatário:</label>
+        <input type="text" id="filter-destinatario" placeholder="Nome ou CNPJ" oninput="filterTable()" style="max-width:180px"/>
+      </div>
+    </div>
+    <div class="filter-row">
+      <div class="filter-group">
+        <label>De:</label>
         <input type="date" id="filter-from" onchange="filterTable()" style="max-width:145px"/>
       </div>
-      <div style="display:flex;align-items:center;gap:6px">
-        <label style="font-size:12px;color:var(--text-muted);white-space:nowrap">Até:</label>
+      <div class="filter-group">
+        <label>Até:</label>
         <input type="date" id="filter-to" onchange="filterTable()" style="max-width:145px"/>
       </div>
-      <button class="btn btn-secondary btn-sm" onclick="clearFilters()">✕ Limpar</button>
+      <button class="btn btn-secondary btn-sm" onclick="clearFilters()">✕ Limpar filtros</button>
       <button class="btn btn-secondary btn-sm" onclick="loadFiles()">↺ Atualizar</button>
+      <span class="text-sm" id="files-count" style="margin-left:8px"></span>
     </div>
+
     <div class="table-wrap">
       <table>
         <thead>
           <tr>
-            <th>Tipo</th><th>Chave de Acesso</th><th>Schema</th><th>Emitente</th>
-            <th>Destinatário</th><th>Valor (R$)</th><th>Data</th><th></th>
+            <th class="sortable" onclick="sortBy('tipo')">Tipo</th>
+            <th class="sortable" onclick="sortBy('chave')">Chave de Acesso</th>
+            <th>Schema</th>
+            <th class="sortable" onclick="sortBy('emitente')">Emitente</th>
+            <th class="sortable" onclick="sortBy('destinatario')">Destinatário</th>
+            <th class="sortable" onclick="sortBy('valor')">Valor (R$)</th>
+            <th class="sortable" onclick="sortBy('data_emissao')">Data</th>
+            <th></th>
           </tr>
         </thead>
         <tbody id="files-table">
@@ -391,7 +424,6 @@
         </tbody>
       </table>
     </div>
-    <p class="text-sm mt-8" id="files-count"></p>
   </div>
 
   <!-- LOGS -->
@@ -539,10 +571,15 @@ function pollSyncStatus() {
         if (result) {
           if (s.last_result?.status === 'success') {
             const r = s.last_result.result;
-            const lines = Object.entries(r || {}).map(([k,v]) =>
-              `<strong>${k.toUpperCase()}</strong>: ${v.documentos ?? 0} documento(s) — NSU final: ${v.nsu_final ?? '—'}`
-            ).join('<br>');
-            result.innerHTML = `<div class="alert alert-success">✓ Sincronização concluída!<br>${lines}</div>`;
+            const hasError = Object.values(r || {}).some(v => v.status === 'error');
+            const lines = Object.entries(r || {}).map(([k,v]) => {
+              if (v.status === 'error') {
+                return `<span style="color:#fca5a5">❌ <strong>${k.toUpperCase()}</strong>: ${escHtml(v.mensagem)}</span>`;
+              }
+              return `<span style="color:#86efac">✓ <strong>${k.toUpperCase()}</strong>: ${v.documentos ?? 0} documento(s) — NSU final: ${v.nsu_final ?? '—'}</span>`;
+            }).join('<br>');
+            const cls = hasError ? 'alert-warning' : 'alert-success';
+            result.innerHTML = `<div class="alert ${cls}">Sincronização concluída:<br>${lines}</div>`;
           } else if (s.last_result?.status === 'error') {
             result.innerHTML = `<div class="alert alert-error">❌ ${escHtml(s.last_result.mensagem)}</div>`;
           }
@@ -671,37 +708,55 @@ async function resetNSU(tipo) {
 
 // ─── Files ────────────────────────────────────────────────────────
 let allDocs = [];
+let sortCol = 'data_emissao';
+let sortDir = -1; // -1=desc, 1=asc
 
 async function loadFiles() {
-  const tipo = document.getElementById('filter-tipo').value;
-  const url = '/api/files/list?limit=500' + (tipo ? `&tipo=${tipo}` : '');
   try {
-    const data = await api(url);
+    const data = await api('/api/files/list?limit=1000');
     allDocs = data.documents;
-    renderFilesTable(allDocs);
-    document.getElementById('files-count').textContent = `${allDocs.length} documentos`;
+    filterTable();
   } catch(e) {
     console.error(e);
   }
 }
 
-function filterTable() {
-  const q = document.getElementById('filter-search').value.toLowerCase();
-  const tipo = document.getElementById('filter-tipo').value;
-  const from = document.getElementById('filter-from').value;  // YYYY-MM-DD
-  const to = document.getElementById('filter-to').value;
+function sortBy(col) {
+  if (sortCol === col) { sortDir *= -1; }
+  else { sortCol = col; sortDir = 1; }
+  // Update header classes
+  document.querySelectorAll('th.sortable').forEach(th => {
+    th.classList.remove('sort-asc','sort-desc');
+    if (th.getAttribute('onclick') === `sortBy('${col}')`) {
+      th.classList.add(sortDir === 1 ? 'sort-asc' : 'sort-desc');
+    }
+  });
+  filterTable();
+}
 
-  const filtered = allDocs.filter(d => {
+function filterTable() {
+  const chave    = document.getElementById('filter-chave')?.value.toLowerCase() || '';
+  const emit     = document.getElementById('filter-emitente')?.value.toLowerCase() || '';
+  const dest     = document.getElementById('filter-destinatario')?.value.toLowerCase() || '';
+  const tipo     = document.getElementById('filter-tipo')?.value || '';
+  const from     = document.getElementById('filter-from')?.value || '';
+  const to       = document.getElementById('filter-to')?.value || '';
+
+  let filtered = allDocs.filter(d => {
     if (tipo && d.tipo !== tipo) return false;
-    if (q && !(
-      (d.chave || '').toLowerCase().includes(q) ||
-      (d.emitente || '').toLowerCase().includes(q) ||
-      (d.destinatario || '').toLowerCase().includes(q) ||
-      (d.nsu || '').includes(q)
-    )) return false;
+    if (chave && !(d.chave || '').toLowerCase().includes(chave) && !(d.nsu || '').includes(chave)) return false;
+    if (emit && !(d.emitente || '').toLowerCase().includes(emit)) return false;
+    if (dest && !(d.destinatario || '').toLowerCase().includes(dest)) return false;
     if (from && d.data_emissao && d.data_emissao < from) return false;
     if (to && d.data_emissao && d.data_emissao > to) return false;
     return true;
+  });
+
+  // Sort
+  filtered.sort((a, b) => {
+    const va = (a[sortCol] || '').toString();
+    const vb = (b[sortCol] || '').toString();
+    return sortDir * va.localeCompare(vb, 'pt-BR', {numeric: true});
   });
 
   renderFilesTable(filtered);
@@ -710,11 +765,17 @@ function filterTable() {
 }
 
 function clearFilters() {
-  document.getElementById('filter-search').value = '';
-  document.getElementById('filter-tipo').value = '';
-  document.getElementById('filter-from').value = '';
-  document.getElementById('filter-to').value = '';
+  ['filter-chave','filter-emitente','filter-destinatario','filter-tipo','filter-from','filter-to']
+    .forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
   filterTable();
+}
+
+function schemaLabel(schema) {
+  if (!schema) return '—';
+  if (schema.startsWith('procNFe') || schema.startsWith('procCTe')) return '<span class="badge badge-success">Autorizada</span>';
+  if (schema.includes('Evento') || schema.includes('evento')) return '<span class="badge" style="background:#292524;color:#a8a29e">Evento</span>';
+  if (schema.startsWith('res')) return '<span class="badge" style="background:#1c1917;color:#78716c">Resumo</span>';
+  return `<span style="font-size:10px;color:var(--text-muted)">${escHtml(schema)}</span>`;
 }
 
 function renderFilesTable(docs) {
@@ -724,19 +785,20 @@ function renderFilesTable(docs) {
     return;
   }
   tbody.innerHTML = docs.map(d => {
-    const parts = d.file_path ? d.file_path.replace(/\\/g,'/').split('/') : [];
+    const parts = (d.file_path || '').replace(/\\/g,'/').split('/');
     const downloadPath = parts.length >= 5
       ? `/api/files/download/${parts[parts.length-4]}/${parts[parts.length-3]}/${parts[parts.length-2]}/${parts[parts.length-1]}`
       : '#';
+    const chaveShort = (d.chave || d.nsu || '');
     return `<tr>
       <td><span class="badge badge-${d.tipo}">${d.tipo.toUpperCase()}</span></td>
-      <td style="font-family:monospace;font-size:11px">${escHtml(d.chave || d.nsu)}</td>
-      <td style="font-size:11px;color:var(--text-muted)">${escHtml(d.schema)}</td>
-      <td>${escHtml(d.emitente)}</td>
-      <td>${escHtml(d.destinatario)}</td>
-      <td>${escHtml(d.valor)}</td>
+      <td style="font-family:monospace;font-size:11px" title="${escHtml(chaveShort)}">${escHtml(chaveShort.length > 22 ? chaveShort.slice(0,10)+'…'+chaveShort.slice(-10) : chaveShort)}</td>
+      <td>${schemaLabel(d.schema)}</td>
+      <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(d.emitente)}">${escHtml(d.emitente)}</td>
+      <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(d.destinatario)}">${escHtml(d.destinatario)}</td>
+      <td style="text-align:right">${escHtml(d.valor)}</td>
       <td>${d.data_emissao || '—'}</td>
-      <td><a href="${downloadPath}" class="btn btn-secondary btn-sm">⬇</a></td>
+      <td><a href="${downloadPath}" class="btn btn-secondary btn-sm" title="Baixar XML">⬇</a></td>
     </tr>`;
   }).join('');
 }
