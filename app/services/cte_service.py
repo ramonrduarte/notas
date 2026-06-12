@@ -182,7 +182,8 @@ def sync_cte(pfx_path: Path, password: str, cnpj: str, ult_nsu: str,
 
             current_nsu = ult_nsu_resp
 
-            if c_stat == "138" or ult_nsu_resp == max_nsu:
+            # 137 = nenhum doc localizado (fim); 138 = doc localizado (continuar)
+            if c_stat == "137" or ult_nsu_resp == max_nsu:
                 break
 
             time.sleep(1)
