@@ -360,13 +360,22 @@
   <!-- DOCUMENTS -->
   <div class="page" id="page-files">
     <h2>Documentos</h2>
-    <div class="filter-row">
-      <select id="filter-tipo" onchange="loadFiles()">
-        <option value="">Todos</option>
+    <div class="filter-row" style="flex-wrap:wrap;gap:8px">
+      <select id="filter-tipo" onchange="filterTable()">
+        <option value="">Todos os tipos</option>
         <option value="nfe">NF-e</option>
         <option value="cte">CT-e</option>
       </select>
-      <input type="text" id="filter-search" placeholder="Buscar por chave ou emitente..." oninput="filterTable()" style="max-width:300px"/>
+      <input type="text" id="filter-search" placeholder="Chave, emitente ou destinatário..." oninput="filterTable()" style="max-width:260px"/>
+      <div style="display:flex;align-items:center;gap:6px">
+        <label style="font-size:12px;color:var(--text-muted);white-space:nowrap">De:</label>
+        <input type="date" id="filter-from" onchange="filterTable()" style="max-width:145px"/>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px">
+        <label style="font-size:12px;color:var(--text-muted);white-space:nowrap">Até:</label>
+        <input type="date" id="filter-to" onchange="filterTable()" style="max-width:145px"/>
+      </div>
+      <button class="btn btn-secondary btn-sm" onclick="clearFilters()">✕ Limpar</button>
       <button class="btn btn-secondary btn-sm" onclick="loadFiles()">↺ Atualizar</button>
     </div>
     <div class="table-wrap">
@@ -678,13 +687,34 @@ async function loadFiles() {
 
 function filterTable() {
   const q = document.getElementById('filter-search').value.toLowerCase();
-  const filtered = allDocs.filter(d =>
-    (d.chave || '').toLowerCase().includes(q) ||
-    (d.emitente || '').toLowerCase().includes(q) ||
-    (d.destinatario || '').toLowerCase().includes(q) ||
-    (d.nsu || '').includes(q)
-  );
+  const tipo = document.getElementById('filter-tipo').value;
+  const from = document.getElementById('filter-from').value;  // YYYY-MM-DD
+  const to = document.getElementById('filter-to').value;
+
+  const filtered = allDocs.filter(d => {
+    if (tipo && d.tipo !== tipo) return false;
+    if (q && !(
+      (d.chave || '').toLowerCase().includes(q) ||
+      (d.emitente || '').toLowerCase().includes(q) ||
+      (d.destinatario || '').toLowerCase().includes(q) ||
+      (d.nsu || '').includes(q)
+    )) return false;
+    if (from && d.data_emissao && d.data_emissao < from) return false;
+    if (to && d.data_emissao && d.data_emissao > to) return false;
+    return true;
+  });
+
   renderFilesTable(filtered);
+  document.getElementById('files-count').textContent =
+    `${filtered.length} de ${allDocs.length} documentos`;
+}
+
+function clearFilters() {
+  document.getElementById('filter-search').value = '';
+  document.getElementById('filter-tipo').value = '';
+  document.getElementById('filter-from').value = '';
+  document.getElementById('filter-to').value = '';
+  filterTable();
 }
 
 function renderFilesTable(docs) {
