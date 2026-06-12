@@ -12,7 +12,7 @@ from app.services.certificate import cert_files
 
 logger = logging.getLogger(__name__)
 
-NFE_DIST_URL_PROD = "https://www.nfe.fazenda.gov.br/NFeDistribuicaoDFe/NFeDistribuicaoDFe.asmx"
+NFE_DIST_URL_PROD = "https://www1.nfe.fazenda.gov.br/NFeDistribuicaoDFe/NFeDistribuicaoDFe.asmx"
 NFE_DIST_URL_HOM = "https://hom.nfe.fazenda.gov.br/NFeDistribuicaoDFe/NFeDistribuicaoDFe.asmx"
 
 NS_NFE = "http://www.portalfiscal.inf.br/nfe"

@@ -12,7 +12,7 @@ from app.services.certificate import cert_files
 
 logger = logging.getLogger(__name__)
 
-CTE_DIST_URL_PROD = "https://www.cte.fazenda.gov.br/CTeDistribuicaoDFe/CTeDistribuicaoDFe.asmx"
+CTE_DIST_URL_PROD = "https://www1.cte.fazenda.gov.br/CTeDistribuicaoDFe/CTeDistribuicaoDFe.asmx"
 CTE_DIST_URL_HOM = "https://hom.cte.fazenda.gov.br/CTeDistribuicaoDFe/CTeDistribuicaoDFe.asmx"
 
 NS_CTE = "http://www.portalfiscal.inf.br/cte"
