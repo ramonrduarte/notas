@@ -1,0 +1,12 @@
+services:
+  sefaz-downloader:
+    build: .
+    container_name: sefaz-downloader
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/data
+    environment:
+      - DATA_DIR=/data
+      - TZ=America/Sao_Paulo
+    restart: unless-stopped

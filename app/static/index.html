@@ -1,0 +1,756 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SEFAZ Downloader</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0f172a;
+      --surface: #1e293b;
+      --surface2: #273449;
+      --border: #334155;
+      --primary: #3b82f6;
+      --primary-hover: #2563eb;
+      --success: #22c55e;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --text: #e2e8f0;
+      --text-muted: #94a3b8;
+      --radius: 8px;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      min-height: 100vh;
+    }
+
+    /* SIDEBAR */
+    .sidebar {
+      width: 220px;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      padding: 24px 0;
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+    }
+    .sidebar-logo {
+      padding: 0 20px 24px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 16px;
+    }
+    .sidebar-logo h1 { font-size: 16px; font-weight: 700; color: var(--primary); }
+    .sidebar-logo p { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+    .nav-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 20px; cursor: pointer;
+      color: var(--text-muted); font-size: 14px;
+      border-left: 3px solid transparent;
+      transition: all 0.15s;
+      user-select: none;
+    }
+    .nav-item:hover { background: var(--surface2); color: var(--text); }
+    .nav-item.active { color: var(--primary); border-left-color: var(--primary); background: var(--surface2); }
+    .nav-icon { font-size: 16px; width: 20px; text-align: center; }
+
+    /* MAIN */
+    .main { flex: 1; padding: 32px; overflow-y: auto; }
+    .page { display: none; }
+    .page.active { display: block; }
+
+    h2 { font-size: 22px; font-weight: 700; margin-bottom: 24px; }
+    h3 { font-size: 16px; font-weight: 600; margin-bottom: 16px; }
+
+    /* CARDS */
+    .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 16px; margin-bottom: 28px; }
+    .card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 20px;
+    }
+    .card-label { font-size: 12px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .5px; }
+    .card-value { font-size: 28px; font-weight: 700; margin-top: 6px; }
+    .card-sub { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+    .text-primary { color: var(--primary); }
+    .text-success { color: var(--success); }
+    .text-warning { color: var(--warning); }
+    .text-danger { color: var(--danger); }
+
+    /* BUTTONS */
+    .btn {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 9px 18px; border-radius: var(--radius);
+      border: none; cursor: pointer; font-size: 14px; font-weight: 500;
+      transition: background 0.15s; text-decoration: none;
+    }
+    .btn-primary { background: var(--primary); color: #fff; }
+    .btn-primary:hover { background: var(--primary-hover); }
+    .btn-secondary { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+    .btn-secondary:hover { background: var(--border); }
+    .btn-danger { background: #7f1d1d; color: var(--danger); border: 1px solid var(--danger); }
+    .btn-danger:hover { background: var(--danger); color: #fff; }
+    .btn:disabled { opacity: .5; cursor: not-allowed; }
+    .btn-sm { padding: 5px 12px; font-size: 12px; }
+
+    /* FORM */
+    .form-section { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px; margin-bottom: 20px; }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+    .form-row.single { grid-template-columns: 1fr; }
+    .form-group { display: flex; flex-direction: column; gap: 6px; }
+    label { font-size: 13px; color: var(--text-muted); }
+    input, select {
+      background: var(--bg); border: 1px solid var(--border);
+      color: var(--text); padding: 8px 12px; border-radius: 6px;
+      font-size: 14px; outline: none; transition: border-color .15s;
+    }
+    input:focus, select:focus { border-color: var(--primary); }
+    input[type=file] { padding: 6px; cursor: pointer; }
+    .form-actions { display: flex; gap: 10px; margin-top: 8px; }
+
+    /* TABLE */
+    .table-wrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    thead { background: var(--surface2); }
+    th { padding: 10px 14px; text-align: left; color: var(--text-muted); font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: .5px; }
+    td { padding: 10px 14px; border-top: 1px solid var(--border); vertical-align: middle; }
+    tr:hover td { background: var(--surface2); }
+    .badge {
+      display: inline-block; padding: 2px 8px; border-radius: 99px;
+      font-size: 11px; font-weight: 600;
+    }
+    .badge-nfe { background: #1e3a5f; color: #60a5fa; }
+    .badge-cte { background: #2d1b69; color: #a78bfa; }
+    .badge-success { background: #14532d; color: #4ade80; }
+    .badge-error { background: #7f1d1d; color: #f87171; }
+    .badge-running { background: #451a03; color: #fbbf24; }
+
+    /* ALERT */
+    .alert { padding: 12px 16px; border-radius: var(--radius); margin-bottom: 16px; font-size: 14px; }
+    .alert-info { background: #1e3a5f; border: 1px solid #2563eb; color: #93c5fd; }
+    .alert-success { background: #14532d; border: 1px solid #16a34a; color: #86efac; }
+    .alert-error { background: #7f1d1d; border: 1px solid #dc2626; color: #fca5a5; }
+    .alert-warning { background: #451a03; border: 1px solid #d97706; color: #fcd34d; }
+
+    /* MISC */
+    .flex { display: flex; }
+    .items-center { align-items: center; }
+    .justify-between { justify-content: space-between; }
+    .gap-8 { gap: 8px; }
+    .gap-12 { gap: 12px; }
+    .mt-8 { margin-top: 8px; }
+    .mt-16 { margin-top: 16px; }
+    .mb-16 { margin-bottom: 16px; }
+    .text-sm { font-size: 12px; color: var(--text-muted); }
+    .spin { animation: spin 1s linear infinite; display: inline-block; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .filter-row { display: flex; gap: 10px; margin-bottom: 16px; align-items: center; }
+    .filter-row select, .filter-row input { max-width: 200px; }
+
+    /* SYNC STATUS BAR */
+    .sync-bar {
+      position: fixed; bottom: 20px; right: 20px;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 12px 18px;
+      font-size: 13px; display: none; align-items: center; gap: 10px;
+      box-shadow: 0 4px 20px rgba(0,0,0,.4);
+      z-index: 100;
+    }
+    .sync-bar.visible { display: flex; }
+
+    /* LOGS */
+    .log-entry { padding: 10px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+    .log-entry:last-child { border-bottom: none; }
+  </style>
+</head>
+<body>
+
+<nav class="sidebar">
+  <div class="sidebar-logo">
+    <h1>⬇ SEFAZ</h1>
+    <p>Downloader de XML</p>
+  </div>
+  <div class="nav-item active" data-page="dashboard">
+    <span class="nav-icon">📊</span> Dashboard
+  </div>
+  <div class="nav-item" data-page="config">
+    <span class="nav-icon">⚙️</span> Configurações
+  </div>
+  <div class="nav-item" data-page="files">
+    <span class="nav-icon">📁</span> Documentos
+  </div>
+  <div class="nav-item" data-page="logs">
+    <span class="nav-icon">📋</span> Histórico
+  </div>
+</nav>
+
+<main class="main">
+
+  <!-- DASHBOARD -->
+  <div class="page active" id="page-dashboard">
+    <h2>Dashboard</h2>
+
+    <div id="alert-config" class="alert alert-warning" style="display:none">
+      ⚠️ Certificado ou CNPJ não configurados. <a href="#" onclick="showPage('config')" style="color:inherit;font-weight:600">Acesse Configurações</a> para começar.
+    </div>
+
+    <div class="cards">
+      <div class="card">
+        <div class="card-label">Total NF-e</div>
+        <div class="card-value text-primary" id="count-nfe">—</div>
+        <div class="card-sub">documentos baixados</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Total CT-e</div>
+        <div class="card-value text-primary" id="count-cte">—</div>
+        <div class="card-sub">documentos baixados</div>
+      </div>
+      <div class="card">
+        <div class="card-label">NSU NF-e</div>
+        <div class="card-value" style="font-size:14px;margin-top:10px;" id="nsu-nfe">—</div>
+        <div class="card-sub">último baixado</div>
+      </div>
+      <div class="card">
+        <div class="card-label">NSU CT-e</div>
+        <div class="card-value" style="font-size:14px;margin-top:10px;" id="nsu-cte">—</div>
+        <div class="card-sub">último baixado</div>
+      </div>
+    </div>
+
+    <div class="form-section">
+      <h3>Sincronização Manual</h3>
+      <p style="font-size:14px;color:var(--text-muted);margin-bottom:16px;">
+        O sistema sincroniza automaticamente no horário configurado. Use os botões abaixo para forçar uma sincronização agora.
+      </p>
+      <div class="flex gap-8">
+        <button class="btn btn-primary" onclick="triggerSync('all')" id="btn-sync-all">
+          ⟳ Sincronizar Tudo
+        </button>
+        <button class="btn btn-secondary" onclick="triggerSync('nfe')" id="btn-sync-nfe">
+          Somente NF-e
+        </button>
+        <button class="btn btn-secondary" onclick="triggerSync('cte')" id="btn-sync-cte">
+          Somente CT-e
+        </button>
+      </div>
+      <div id="sync-result" class="mt-16" style="display:none"></div>
+    </div>
+
+    <div class="form-section">
+      <h3>Últimos Documentos</h3>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Tipo</th><th>Chave/NSU</th><th>Emitente</th><th>Valor</th><th>Data Emissão</th><th>Baixado em</th>
+            </tr>
+          </thead>
+          <tbody id="recent-docs">
+            <tr><td colspan="6" style="text-align:center;color:var(--text-muted)">Carregando...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- CONFIG -->
+  <div class="page" id="page-config">
+    <h2>Configurações</h2>
+
+    <div class="form-section">
+      <h3>Certificado Digital (A1)</h3>
+      <div id="cert-status" class="alert alert-info mb-16" style="display:none"></div>
+      <div class="form-row single">
+        <div class="form-group">
+          <label>Arquivo .pfx / .p12</label>
+          <input type="file" id="cert-file" accept=".pfx,.p12" />
+        </div>
+      </div>
+      <div class="form-row single">
+        <div class="form-group">
+          <label>Senha do Certificado</label>
+          <input type="password" id="cert-password" placeholder="Senha do certificado" />
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-primary" onclick="uploadCert()">Salvar Certificado</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteCert()">Remover Certificado</button>
+      </div>
+    </div>
+
+    <div class="form-section">
+      <h3>Empresa</h3>
+      <div class="form-row">
+        <div class="form-group">
+          <label>CNPJ (somente números)</label>
+          <input type="text" id="cfg-cnpj" placeholder="00000000000000" maxlength="14" />
+        </div>
+        <div class="form-group">
+          <label>Ambiente</label>
+          <select id="cfg-ambiente">
+            <option value="1">Produção</option>
+            <option value="2">Homologação</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Código UF</label>
+          <select id="cfg-uf">
+            <option value="43">43 - Rio Grande do Sul</option>
+            <option value="35">35 - São Paulo</option>
+            <option value="31">31 - Minas Gerais</option>
+            <option value="33">33 - Rio de Janeiro</option>
+            <option value="41">41 - Paraná</option>
+            <option value="42">42 - Santa Catarina</option>
+            <option value="50">50 - Mato Grosso do Sul</option>
+            <option value="51">51 - Mato Grosso</option>
+            <option value="52">52 - Goiás</option>
+            <option value="53">53 - Distrito Federal</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Tipos a Sincronizar</label>
+          <div class="flex gap-12 items-center" style="margin-top:8px">
+            <label style="display:flex;align-items:center;gap:6px;color:var(--text)">
+              <input type="checkbox" id="cfg-sync-nfe" checked /> NF-e
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;color:var(--text)">
+              <input type="checkbox" id="cfg-sync-cte" checked /> CT-e
+            </label>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="form-section">
+      <h3>Agendamento</h3>
+      <p style="font-size:13px;color:var(--text-muted);margin-bottom:14px;">Horário para sincronização automática diária (fuso: America/Sao_Paulo).</p>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Hora</label>
+          <input type="number" id="cfg-hour" min="0" max="23" value="7" />
+        </div>
+        <div class="form-group">
+          <label>Minuto</label>
+          <input type="number" id="cfg-minute" min="0" max="59" value="0" />
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-primary" onclick="saveConfig()">Salvar Configurações</button>
+      </div>
+      <div id="config-result" class="mt-16" style="display:none"></div>
+    </div>
+
+    <div class="form-section">
+      <h3>Zona de Perigo</h3>
+      <p style="font-size:13px;color:var(--text-muted);margin-bottom:14px;">Resetar os NSUs faz com que todos os documentos sejam re-baixados na próxima sincronização (documentos dos últimos 90 dias).</p>
+      <div class="flex gap-8">
+        <button class="btn btn-danger btn-sm" onclick="resetNSU('nfe')">Resetar NSU NF-e</button>
+        <button class="btn btn-danger btn-sm" onclick="resetNSU('cte')">Resetar NSU CT-e</button>
+        <button class="btn btn-danger btn-sm" onclick="resetNSU('all')">Resetar Tudo</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- DOCUMENTS -->
+  <div class="page" id="page-files">
+    <h2>Documentos</h2>
+    <div class="filter-row">
+      <select id="filter-tipo" onchange="loadFiles()">
+        <option value="">Todos</option>
+        <option value="nfe">NF-e</option>
+        <option value="cte">CT-e</option>
+      </select>
+      <input type="text" id="filter-search" placeholder="Buscar por chave ou emitente..." oninput="filterTable()" style="max-width:300px"/>
+      <button class="btn btn-secondary btn-sm" onclick="loadFiles()">↺ Atualizar</button>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Tipo</th><th>Chave de Acesso</th><th>Schema</th><th>Emitente</th>
+            <th>Destinatário</th><th>Valor (R$)</th><th>Data</th><th></th>
+          </tr>
+        </thead>
+        <tbody id="files-table">
+          <tr><td colspan="8" style="text-align:center;color:var(--text-muted)">Carregando...</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="text-sm mt-8" id="files-count"></p>
+  </div>
+
+  <!-- LOGS -->
+  <div class="page" id="page-logs">
+    <h2>Histórico de Sincronização</h2>
+    <button class="btn btn-secondary btn-sm mb-16" onclick="loadLogs()">↺ Atualizar</button>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Tipo</th><th>Iniciado</th><th>Finalizado</th><th>Status</th><th>NSU Inicial</th><th>NSU Final</th><th>Docs</th><th>Mensagem</th></tr>
+        </thead>
+        <tbody id="logs-table">
+          <tr><td colspan="8" style="text-align:center;color:var(--text-muted)">Carregando...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</main>
+
+<!-- SYNC STATUS BAR -->
+<div class="sync-bar" id="sync-bar">
+  <span class="spin">⟳</span>
+  <span id="sync-bar-text">Sincronizando...</span>
+</div>
+
+<script>
+// ─── Navigation ──────────────────────────────────────────────────
+function showPage(name) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('page-' + name).classList.add('active');
+  document.querySelector(`[data-page="${name}"]`).classList.add('active');
+  if (name === 'dashboard') loadDashboard();
+  if (name === 'files') loadFiles();
+  if (name === 'logs') loadLogs();
+  if (name === 'config') loadConfig();
+}
+
+document.querySelectorAll('.nav-item').forEach(el => {
+  el.addEventListener('click', () => showPage(el.dataset.page));
+});
+
+// ─── API helpers ─────────────────────────────────────────────────
+async function api(path, opts = {}) {
+  const res = await fetch(path, opts);
+  if (!res.ok) {
+    const txt = await res.text();
+    throw new Error(txt || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+function fmt(dt) {
+  if (!dt) return '—';
+  return dt.replace('T', ' ').slice(0, 16);
+}
+
+function escHtml(s) {
+  return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ─── Dashboard ───────────────────────────────────────────────────
+async function loadDashboard() {
+  try {
+    const [counts, nsu, cfg, recent] = await Promise.all([
+      api('/api/files/count'),
+      api('/api/files/nsu'),
+      api('/api/config'),
+      api('/api/files/list?limit=10'),
+    ]);
+
+    document.getElementById('count-nfe').textContent = counts.nfe;
+    document.getElementById('count-cte').textContent = counts.cte;
+    document.getElementById('nsu-nfe').textContent = nsu.nfe;
+    document.getElementById('nsu-cte').textContent = nsu.cte;
+
+    const warn = document.getElementById('alert-config');
+    if (!cfg.has_cert || !cfg.cnpj) {
+      warn.style.display = 'block';
+    } else {
+      warn.style.display = 'none';
+    }
+
+    const tbody = document.getElementById('recent-docs');
+    if (recent.documents.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-muted)">Nenhum documento ainda.</td></tr>';
+    } else {
+      tbody.innerHTML = recent.documents.map(d => `
+        <tr>
+          <td><span class="badge badge-${d.tipo}">${d.tipo.toUpperCase()}</span></td>
+          <td style="font-family:monospace;font-size:11px">${escHtml(d.chave || d.nsu)}</td>
+          <td>${escHtml(d.emitente)}</td>
+          <td>${escHtml(d.valor)}</td>
+          <td>${d.data_emissao || '—'}</td>
+          <td>${fmt(d.baixado_em)}</td>
+        </tr>`).join('');
+    }
+  } catch(e) {
+    console.error(e);
+  }
+}
+
+// ─── Sync ─────────────────────────────────────────────────────────
+let syncPollInterval = null;
+
+async function triggerSync(tipo) {
+  const btns = ['btn-sync-all','btn-sync-nfe','btn-sync-cte'];
+  btns.forEach(b => document.getElementById(b).disabled = true);
+  const result = document.getElementById('sync-result');
+  result.style.display = 'block';
+  result.innerHTML = '<div class="alert alert-info">⟳ Iniciando sincronização...</div>';
+
+  try {
+    await api('/api/sync/trigger', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({tipo}),
+    });
+    showSyncBar(true);
+    pollSyncStatus();
+  } catch(e) {
+    result.innerHTML = `<div class="alert alert-error">❌ ${escHtml(e.message)}</div>`;
+    btns.forEach(b => document.getElementById(b).disabled = false);
+  }
+}
+
+function showSyncBar(show) {
+  const bar = document.getElementById('sync-bar');
+  if (show) bar.classList.add('visible'); else bar.classList.remove('visible');
+}
+
+function pollSyncStatus() {
+  if (syncPollInterval) clearInterval(syncPollInterval);
+  syncPollInterval = setInterval(async () => {
+    try {
+      const s = await api('/api/sync/status');
+      if (!s.running) {
+        clearInterval(syncPollInterval);
+        showSyncBar(false);
+        const btns = ['btn-sync-all','btn-sync-nfe','btn-sync-cte'];
+        btns.forEach(b => document.getElementById(b).disabled = false);
+
+        const result = document.getElementById('sync-result');
+        if (result) {
+          if (s.last_result?.status === 'success') {
+            const r = s.last_result.result;
+            const lines = Object.entries(r || {}).map(([k,v]) =>
+              `<strong>${k.toUpperCase()}</strong>: ${v.documentos ?? 0} documento(s) — NSU final: ${v.nsu_final ?? '—'}`
+            ).join('<br>');
+            result.innerHTML = `<div class="alert alert-success">✓ Sincronização concluída!<br>${lines}</div>`;
+          } else if (s.last_result?.status === 'error') {
+            result.innerHTML = `<div class="alert alert-error">❌ ${escHtml(s.last_result.mensagem)}</div>`;
+          }
+        }
+        loadDashboard();
+      }
+    } catch(e) { /* ignore */ }
+  }, 2000);
+}
+
+// ─── Config ───────────────────────────────────────────────────────
+async function loadConfig() {
+  try {
+    const cfg = await api('/api/config');
+    document.getElementById('cfg-cnpj').value = cfg.cnpj || '';
+    document.getElementById('cfg-ambiente').value = cfg.ambiente || '1';
+    document.getElementById('cfg-uf').value = cfg.uf_code || '43';
+    document.getElementById('cfg-hour').value = cfg.schedule_hour ?? 7;
+    document.getElementById('cfg-minute').value = cfg.schedule_minute ?? 0;
+    document.getElementById('cfg-sync-nfe').checked = cfg.sync_nfe !== false;
+    document.getElementById('cfg-sync-cte').checked = cfg.sync_cte !== false;
+
+    const certStatus = document.getElementById('cert-status');
+    certStatus.style.display = 'block';
+    if (cfg.has_cert) {
+      certStatus.className = 'alert alert-success mb-16';
+      certStatus.textContent = `✓ Certificado carregado: ${cfg.cert_filename}${cfg.has_password ? ' (senha configurada)' : ''}`;
+    } else {
+      certStatus.className = 'alert alert-warning mb-16';
+      certStatus.textContent = '⚠️ Nenhum certificado configurado.';
+    }
+  } catch(e) {
+    console.error(e);
+  }
+}
+
+async function uploadCert() {
+  const fileInput = document.getElementById('cert-file');
+  const password = document.getElementById('cert-password').value;
+
+  if (!fileInput.files.length) {
+    showConfigResult('Selecione um arquivo .pfx', 'error');
+    return;
+  }
+
+  // Upload file
+  const fd = new FormData();
+  fd.append('file', fileInput.files[0]);
+  try {
+    await fetch('/api/config/certificate', { method: 'POST', body: fd }).then(r => {
+      if (!r.ok) throw new Error('Erro ao fazer upload');
+      return r.json();
+    });
+  } catch(e) {
+    showConfigResult('Erro ao enviar certificado: ' + e.message, 'error');
+    return;
+  }
+
+  // Save password
+  if (password) {
+    const cfg = await api('/api/config');
+    await api('/api/config', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        cnpj: cfg.cnpj,
+        cert_password: password,
+        schedule_hour: cfg.schedule_hour,
+        schedule_minute: cfg.schedule_minute,
+        ambiente: cfg.ambiente,
+        uf_code: cfg.uf_code,
+        sync_nfe: cfg.sync_nfe,
+        sync_cte: cfg.sync_cte,
+      }),
+    });
+  }
+
+  showConfigResult('✓ Certificado salvo com sucesso!', 'success');
+  fileInput.value = '';
+  document.getElementById('cert-password').value = '';
+  loadConfig();
+}
+
+async function deleteCert() {
+  if (!confirm('Remover o certificado?')) return;
+  await api('/api/config/certificate', { method: 'DELETE' });
+  loadConfig();
+}
+
+async function saveConfig() {
+  const body = {
+    cnpj: document.getElementById('cfg-cnpj').value.replace(/\D/g,''),
+    cert_password: document.getElementById('cert-password').value || '',
+    schedule_hour: parseInt(document.getElementById('cfg-hour').value),
+    schedule_minute: parseInt(document.getElementById('cfg-minute').value),
+    ambiente: document.getElementById('cfg-ambiente').value,
+    uf_code: document.getElementById('cfg-uf').value,
+    sync_nfe: document.getElementById('cfg-sync-nfe').checked,
+    sync_cte: document.getElementById('cfg-sync-cte').checked,
+  };
+  try {
+    await api('/api/config', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(body),
+    });
+    showConfigResult('✓ Configurações salvas!', 'success');
+    loadConfig();
+  } catch(e) {
+    showConfigResult('Erro: ' + e.message, 'error');
+  }
+}
+
+function showConfigResult(msg, type) {
+  const el = document.getElementById('config-result');
+  el.style.display = 'block';
+  el.innerHTML = `<div class="alert alert-${type === 'error' ? 'error' : 'success'}">${escHtml(msg)}</div>`;
+  setTimeout(() => el.style.display = 'none', 4000);
+}
+
+async function resetNSU(tipo) {
+  if (!confirm(`Resetar NSU de ${tipo}? Os documentos serão re-baixados na próxima sincronização.`)) return;
+  await api(`/api/sync/reset-nsu?tipo=${tipo}`, { method: 'POST' });
+  loadDashboard();
+}
+
+// ─── Files ────────────────────────────────────────────────────────
+let allDocs = [];
+
+async function loadFiles() {
+  const tipo = document.getElementById('filter-tipo').value;
+  const url = '/api/files/list?limit=500' + (tipo ? `&tipo=${tipo}` : '');
+  try {
+    const data = await api(url);
+    allDocs = data.documents;
+    renderFilesTable(allDocs);
+    document.getElementById('files-count').textContent = `${allDocs.length} documentos`;
+  } catch(e) {
+    console.error(e);
+  }
+}
+
+function filterTable() {
+  const q = document.getElementById('filter-search').value.toLowerCase();
+  const filtered = allDocs.filter(d =>
+    (d.chave || '').toLowerCase().includes(q) ||
+    (d.emitente || '').toLowerCase().includes(q) ||
+    (d.destinatario || '').toLowerCase().includes(q) ||
+    (d.nsu || '').includes(q)
+  );
+  renderFilesTable(filtered);
+}
+
+function renderFilesTable(docs) {
+  const tbody = document.getElementById('files-table');
+  if (!docs.length) {
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--text-muted)">Nenhum documento encontrado.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = docs.map(d => {
+    const parts = d.file_path ? d.file_path.replace(/\\/g,'/').split('/') : [];
+    const downloadPath = parts.length >= 5
+      ? `/api/files/download/${parts[parts.length-4]}/${parts[parts.length-3]}/${parts[parts.length-2]}/${parts[parts.length-1]}`
+      : '#';
+    return `<tr>
+      <td><span class="badge badge-${d.tipo}">${d.tipo.toUpperCase()}</span></td>
+      <td style="font-family:monospace;font-size:11px">${escHtml(d.chave || d.nsu)}</td>
+      <td style="font-size:11px;color:var(--text-muted)">${escHtml(d.schema)}</td>
+      <td>${escHtml(d.emitente)}</td>
+      <td>${escHtml(d.destinatario)}</td>
+      <td>${escHtml(d.valor)}</td>
+      <td>${d.data_emissao || '—'}</td>
+      <td><a href="${downloadPath}" class="btn btn-secondary btn-sm">⬇</a></td>
+    </tr>`;
+  }).join('');
+}
+
+// ─── Logs ─────────────────────────────────────────────────────────
+async function loadLogs() {
+  try {
+    const logs = await api('/api/sync/logs');
+    const tbody = document.getElementById('logs-table');
+    if (!logs.length) {
+      tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--text-muted)">Sem registros ainda.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = logs.map(l => {
+      const badge = l.status === 'success' ? 'badge-success' : l.status === 'running' ? 'badge-running' : 'badge-error';
+      return `<tr>
+        <td><span class="badge badge-${l.tipo}">${(l.tipo||'').toUpperCase()}</span></td>
+        <td>${fmt(l.iniciado_em)}</td>
+        <td>${fmt(l.finalizado_em)}</td>
+        <td><span class="badge ${badge}">${l.status}</span></td>
+        <td style="font-family:monospace;font-size:11px">${l.nsu_inicial||'—'}</td>
+        <td style="font-family:monospace;font-size:11px">${l.nsu_final||'—'}</td>
+        <td>${l.documentos_baixados ?? 0}</td>
+        <td style="font-size:11px;color:var(--text-muted);max-width:200px;word-break:break-word">${escHtml(l.mensagem)}</td>
+      </tr>`;
+    }).join('');
+  } catch(e) {
+    console.error(e);
+  }
+}
+
+// ─── Init ─────────────────────────────────────────────────────────
+loadDashboard();
+
+// Check if a sync is already running when page loads
+(async () => {
+  try {
+    const s = await api('/api/sync/status');
+    if (s.running) {
+      showSyncBar(true);
+      pollSyncStatus();
+    }
+  } catch(e) { /* ignore */ }
+})();
+</script>
+</body>
+</html>
