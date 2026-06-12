@@ -151,6 +151,11 @@ def sync_cte(pfx_path: Path, password: str, cnpj: str, ult_nsu: str,
                 raise RuntimeError(f"CT-e DistDFe erro: {c_stat} - {x_motivo}")
 
             for nsu, schema, xml_bytes in docs:
+                # Ignora eventos (cancelamento, carta de correção, etc.)
+                if "Evento" in schema or "evento" in schema:
+                    logger.debug(f"CT-e: ignorando evento NSU {nsu} schema {schema}")
+                    continue
+
                 meta = _extract_cte_meta(xml_bytes)
                 chave = meta["chave"] or nsu
 

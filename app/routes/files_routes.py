@@ -39,3 +39,23 @@ def download_file(tipo: str, year: str, month: str, filename: str):
         media_type="application/xml",
         filename=filename,
     )
+
+
+@router.delete("/purge-events")
+def purge_cte_events():
+    """Remove CT-e eventos already saved (procEventoCTe) from DB and disk."""
+    removed_files = 0
+    removed_db = 0
+    with database.get_conn() as conn:
+        rows = conn.execute(
+            "SELECT id, file_path, schema FROM documents WHERE tipo='cte' AND (schema LIKE '%Evento%' OR schema LIKE '%evento%')"
+        ).fetchall()
+        for row in rows:
+            if row["file_path"]:
+                fp = config.DATA_DIR / row["file_path"]
+                if fp.exists():
+                    fp.unlink()
+                    removed_files += 1
+            conn.execute("DELETE FROM documents WHERE id=?", (row["id"],))
+            removed_db += 1
+    return {"ok": True, "removidos_db": removed_db, "removidos_disco": removed_files}
