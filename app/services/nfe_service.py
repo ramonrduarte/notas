@@ -129,8 +129,7 @@ def sync_nfe(pfx_path: Path, password: str, cnpj: str, ult_nsu: str,
                     url,
                     data=soap_body.encode("utf-8"),
                     headers={
-                        "Content-Type": "application/soap+xml; charset=utf-8",
-                        "SOAPAction": f'"{NS_WSDL}/nfeDistDFeInteresse"',
+                        "Content-Type": f'application/soap+xml; charset=utf-8; action="{NS_WSDL}/nfeDistDFeInteresse"',
                     },
                     timeout=60,
                 )
