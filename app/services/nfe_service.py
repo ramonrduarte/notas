@@ -104,7 +104,8 @@ def _extract_nfe_meta(xml_bytes: bytes) -> dict:
 
 
 def sync_nfe(pfx_path: Path, password: str, cnpj: str, ult_nsu: str,
-             xml_dir: Path, tp_amb: str = "1", cuf: str = "43") -> tuple[str, int, list]:
+             xml_dir: Path, tp_amb: str = "1", cuf: str = "43",
+             cancel_flag=None) -> tuple[str, int, list]:
     """
     Download all NF-e since ult_nsu.
     Returns (new_ult_nsu, total_docs, saved_docs_metadata).
@@ -121,6 +122,8 @@ def sync_nfe(pfx_path: Path, password: str, cnpj: str, ult_nsu: str,
         session.verify = True
 
         while True:
+            if cancel_flag and cancel_flag.is_set():
+                raise RuntimeError("Sync NF-e cancelado pelo usuário.")
             soap_body = _build_soap(cnpj, current_nsu, tp_amb, cuf)
             logger.info(f"NF-e DistDFe: consultando a partir de NSU {current_nsu}")
 
@@ -142,10 +145,10 @@ def sync_nfe(pfx_path: Path, password: str, cnpj: str, ult_nsu: str,
             logger.info(f"NF-e DistDFe: cStat={c_stat} ({x_motivo}), {len(docs)} docs, maxNSU={max_nsu}")
 
             if c_stat == "656":
-                # Consumo indevido - rate limit
-                logger.warning("NF-e DistDFe: consumo indevido (rate limit). Aguardando 60s.")
-                time.sleep(60)
-                continue
+                raise RuntimeError(
+                    "NF-e DistDFe: Consumo Indevido (cStat 656). "
+                    "O SEFAZ bloqueou requisições excessivas. Aguarde ~1 hora e tente novamente."
+                )
 
             if c_stat not in ("137", "138"):
                 raise RuntimeError(f"NF-e DistDFe erro: {c_stat} - {x_motivo}")

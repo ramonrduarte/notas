@@ -244,6 +244,9 @@
         <button class="btn btn-secondary" onclick="triggerSync('cte')" id="btn-sync-cte">
           Somente CT-e
         </button>
+        <button class="btn btn-danger btn-sm" onclick="cancelSync()" id="btn-cancel" style="display:none">
+          ✕ Cancelar
+        </button>
       </div>
       <div id="sync-result" class="mt-16" style="display:none"></div>
     </div>
@@ -553,7 +556,22 @@ async function triggerSync(tipo) {
 
 function showSyncBar(show) {
   const bar = document.getElementById('sync-bar');
-  if (show) bar.classList.add('visible'); else bar.classList.remove('visible');
+  const cancelBtn = document.getElementById('btn-cancel');
+  if (show) {
+    bar.classList.add('visible');
+    if (cancelBtn) cancelBtn.style.display = 'inline-flex';
+  } else {
+    bar.classList.remove('visible');
+    if (cancelBtn) cancelBtn.style.display = 'none';
+  }
+}
+
+async function cancelSync() {
+  try {
+    await api('/api/sync/cancel', { method: 'POST' });
+    document.getElementById('sync-result').innerHTML =
+      '<div class="alert alert-warning">⚠ Cancelamento solicitado. Aguarde o processo parar...</div>';
+  } catch(e) { console.error(e); }
 }
 
 function pollSyncStatus() {
