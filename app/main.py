@@ -6,7 +6,7 @@ from fastapi.responses import FileResponse
 from pathlib import Path
 
 from app import config, database, scheduler
-from app.routes import config_routes, sync_routes, files_routes
+from app.routes import config_routes, sync_routes, files_routes, recovery_routes
 
 logging.basicConfig(
     level=logging.INFO,
@@ -32,6 +32,7 @@ app = FastAPI(title="SEFAZ Downloader", lifespan=lifespan)
 app.include_router(config_routes.router)
 app.include_router(sync_routes.router)
 app.include_router(files_routes.router)
+app.include_router(recovery_routes.router)
 
 static_dir = Path(__file__).parent / "static"
 app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")

@@ -7,6 +7,7 @@ CONFIG_FILE = DATA_DIR / "config.json"
 CERT_DIR = DATA_DIR / "cert"
 XML_DIR = DATA_DIR / "xmls"
 HIST_DIR = DATA_DIR / "xmls_historico"
+REC_DIR  = DATA_DIR / "recuperacao"
 DB_PATH = DATA_DIR / "sefaz.db"
 
 
@@ -19,6 +20,8 @@ def ensure_dirs():
     (HIST_DIR / "nfe").mkdir(parents=True, exist_ok=True)
     (HIST_DIR / "cte").mkdir(parents=True, exist_ok=True)
     (HIST_DIR / "nfse").mkdir(parents=True, exist_ok=True)
+    (REC_DIR / "nfe").mkdir(parents=True, exist_ok=True)
+    (REC_DIR / "cte").mkdir(parents=True, exist_ok=True)
 
 
 def load_config() -> dict:

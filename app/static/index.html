@@ -126,6 +126,13 @@
     .badge-nfe  { background: #1e3a5f; color: #60a5fa; }
     .badge-cte  { background: #2d1b69; color: #a78bfa; }
     .badge-nfse { background: #14372f; color: #34d399; }
+    .rec-tab {
+      padding: 8px 18px; border: none; border-bottom: 3px solid transparent;
+      background: none; color: var(--text-muted); font-size: 13px; cursor: pointer;
+      font-weight: 500; transition: color .15s, border-color .15s;
+    }
+    .rec-tab:hover  { color: var(--text); }
+    .rec-tab.active { color: var(--primary); border-bottom-color: var(--primary); }
     .badge-success { background: #14532d; color: #4ade80; }
     .badge-error { background: #7f1d1d; color: #f87171; }
     .badge-running { background: #451a03; color: #fbbf24; }
@@ -588,67 +595,137 @@
 
   <!-- RECOVERY -->
   <div class="page" id="page-recovery">
-    <h2>Recuperação Histórica</h2>
+    <h2>Recuperação de Documentos</h2>
 
-    <div class="alert alert-info" style="margin-bottom:20px">
-      📁 Os documentos recuperados são salvos em <strong>/data/xmls_historico/</strong> — pasta completamente separada da sincronização incremental. Você pode continuar de onde parou: o progresso é salvo a cada execução.
+    <!-- Abas -->
+    <div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:20px">
+      <button class="rec-tab active" data-tab="nsu"     onclick="showRecTab('nsu')">📦 Histórico NSU</button>
+      <button class="rec-tab"        data-tab="chave"   onclick="showRecTab('chave')">🔑 Por Chave</button>
+      <button class="rec-tab"        data-tab="periodo" onclick="showRecTab('periodo')">📅 Por Período</button>
     </div>
 
-    <div class="form-section">
-      <h3>Progresso Atual</h3>
-      <div id="recovery-nsu-status" style="font-size:13px;color:var(--text-muted)">Carregando...</div>
-    </div>
-
-    <div class="form-section">
-      <h3>Configurar Recuperação</h3>
-      <div class="form-row">
-        <div class="form-group">
-          <label>Tipos de documento</label>
-          <div class="flex gap-12 items-center" style="margin-top:8px">
-            <label style="display:flex;align-items:center;gap:6px;color:var(--text)">
-              <input type="checkbox" id="rec-nfe" checked /> <span class="badge badge-nfe">NF-e</span>
-            </label>
-            <label style="display:flex;align-items:center;gap:6px;color:var(--text)">
-              <input type="checkbox" id="rec-cte" checked /> <span class="badge badge-cte">CT-e</span>
-            </label>
-            <label style="display:flex;align-items:center;gap:6px;color:var(--text)">
-              <input type="checkbox" id="rec-nfse" /> <span class="badge badge-nfse">NFS-e</span>
+    <!-- ── ABA 1: Histórico NSU (existente) ── -->
+    <div id="rec-tab-nsu" class="rec-tab-content">
+      <div class="alert alert-info" style="margin-bottom:16px">
+        📁 Documentos salvos em <strong>/data/xmls_historico/</strong> — separado do sync incremental. Continua de onde parou.
+      </div>
+      <div class="form-section">
+        <h3>Progresso Atual</h3>
+        <div id="recovery-nsu-status" style="font-size:13px;color:var(--text-muted)">Carregando...</div>
+      </div>
+      <div class="form-section">
+        <h3>Configurar</h3>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Tipos de documento</label>
+            <div class="flex gap-12 items-center" style="margin-top:8px">
+              <label style="display:flex;align-items:center;gap:6px;color:var(--text)">
+                <input type="checkbox" id="rec-nfe" checked /> <span class="badge badge-nfe">NF-e</span>
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;color:var(--text)">
+                <input type="checkbox" id="rec-cte" checked /> <span class="badge badge-cte">CT-e</span>
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;color:var(--text)">
+                <input type="checkbox" id="rec-nfse" /> <span class="badge badge-nfse">NFS-e</span>
+              </label>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Filtro</label>
+            <label style="display:flex;align-items:center;gap:6px;margin-top:10px;color:var(--text)">
+              <input type="checkbox" id="rec-only-auth" checked />
+              Somente autorizadas <span class="text-sm">(mais rápido)</span>
             </label>
           </div>
         </div>
-        <div class="form-group">
-          <label>Filtro</label>
-          <label style="display:flex;align-items:center;gap:6px;margin-top:10px;color:var(--text)">
-            <input type="checkbox" id="rec-only-auth" checked />
-            Somente autorizadas <span class="text-sm">(mais rápido)</span>
-          </label>
+        <p style="font-size:12px;color:var(--text-muted);margin-top:4px">
+          Filtros de direção/papel configurados em Configurações são aplicados automaticamente.
+        </p>
+        <div class="flex gap-8 mt-16" style="align-items:center;flex-wrap:wrap">
+          <button class="btn btn-primary" onclick="startRecovery(false)" id="btn-recovery-continue">▶ Continuar de onde parou</button>
+          <button class="btn btn-secondary" onclick="startRecovery(true)" id="btn-recovery-restart">↺ Reiniciar do zero</button>
+          <button class="btn btn-danger btn-sm" onclick="cancelSync()" id="btn-recovery-cancel" style="display:none">✕ Cancelar</button>
+          <span class="text-sm" id="recovery-status-text"></span>
         </div>
       </div>
-
-      <p style="font-size:12px;color:var(--text-muted);margin-top:4px">
-        Os filtros de direção (emitidas/recebidas, tomador/emitente) configurados em Configurações são aplicados automaticamente.
-      </p>
-
-      <div class="flex gap-8 mt-16" style="align-items:center;flex-wrap:wrap">
-        <button class="btn btn-primary" onclick="startRecovery(false)" id="btn-recovery-continue">
-          ▶ Continuar de onde parou
-        </button>
-        <button class="btn btn-secondary" onclick="startRecovery(true)" id="btn-recovery-restart">
-          ↺ Reiniciar do zero
-        </button>
-        <button class="btn btn-danger btn-sm" onclick="cancelSync()" id="btn-recovery-cancel" style="display:none">
-          ✕ Cancelar
-        </button>
-        <span class="text-sm" id="recovery-status-text"></span>
+      <div id="recovery-result" class="mt-16" style="display:none"></div>
+      <div class="form-section mt-16" id="recovery-progress-section" style="display:none">
+        <h3>Andamento</h3>
+        <div id="recovery-progress-content" style="font-size:13px"></div>
       </div>
     </div>
 
-    <div id="recovery-result" class="mt-16" style="display:none"></div>
-
-    <div class="form-section mt-16" id="recovery-progress-section" style="display:none">
-      <h3>Andamento</h3>
-      <div id="recovery-progress-content" style="font-size:13px"></div>
+    <!-- ── ABA 2: Por Chave ── -->
+    <div id="rec-tab-chave" class="rec-tab-content" style="display:none">
+      <div class="alert alert-info" style="margin-bottom:16px">
+        🔑 Informe chaves de acesso (44 dígitos) para baixar XMLs específicos. Documentos salvos em <strong>/data/recuperacao/</strong> com tipo <strong>nfe_rec</strong> / <strong>cte_rec</strong>.
+      </div>
+      <div class="form-section">
+        <div class="form-row">
+          <div class="form-group">
+            <label>Tipo de documento</label>
+            <select id="rec-chave-tipo" style="margin-top:6px;padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:13px">
+              <option value="nfe">NF-e</option>
+              <option value="cte">CT-e</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group" style="margin-top:12px">
+          <label>Chaves de acesso <span style="font-weight:400;color:var(--text-muted)">(uma por linha, 44 dígitos cada)</span></label>
+          <textarea id="rec-chave-input" rows="6"
+            placeholder="35240492613413000160550010000015531000015531&#10;35240492613413000160570010000001001000010011"
+            style="margin-top:6px;width:100%;padding:8px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:12px;font-family:monospace;resize:vertical"></textarea>
+        </div>
+        <div class="flex gap-8 mt-12" style="align-items:center">
+          <button class="btn btn-primary" onclick="startRecByChave()" id="btn-rec-chave">⬇ Baixar XMLs</button>
+          <button class="btn btn-danger btn-sm" onclick="cancelRecuperacao()" id="btn-rec-chave-cancel" style="display:none">✕ Cancelar</button>
+          <span class="text-sm" id="rec-chave-status"></span>
+        </div>
+      </div>
+      <div id="rec-chave-result" class="mt-16" style="display:none"></div>
+      <div class="form-section mt-16" id="rec-chave-progress-section" style="display:none">
+        <h3>Andamento</h3>
+        <div id="rec-chave-progress" style="font-size:13px"></div>
+      </div>
     </div>
+
+    <!-- ── ABA 3: Por Período ── -->
+    <div id="rec-tab-periodo" class="rec-tab-content" style="display:none">
+      <div class="alert alert-info" style="margin-bottom:16px">
+        📅 O sistema varre todos os NSUs a partir de zero, identifica documentos no período e baixa os XMLs completos. Documentos salvos em <strong>/data/recuperacao/</strong>.<br>
+        ⚠️ Para períodos longos (anos) o processo pode demorar horas — use o botão Cancelar se necessário.
+      </div>
+      <div class="form-section">
+        <div class="form-row">
+          <div class="form-group">
+            <label>Tipo de documento</label>
+            <select id="rec-periodo-tipo" style="margin-top:6px;padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:13px">
+              <option value="nfe">NF-e</option>
+              <option value="cte">CT-e</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Data inicial</label>
+            <input type="date" id="rec-periodo-ini" style="margin-top:6px;padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:13px" />
+          </div>
+          <div class="form-group">
+            <label>Data final</label>
+            <input type="date" id="rec-periodo-fim" style="margin-top:6px;padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:13px" />
+          </div>
+        </div>
+        <div class="flex gap-8 mt-12" style="align-items:center">
+          <button class="btn btn-primary" onclick="startRecByPeriodo()" id="btn-rec-periodo">⬇ Iniciar Recuperação</button>
+          <button class="btn btn-danger btn-sm" onclick="cancelRecuperacao()" id="btn-rec-periodo-cancel" style="display:none">✕ Cancelar</button>
+          <span class="text-sm" id="rec-periodo-status"></span>
+        </div>
+      </div>
+      <div id="rec-periodo-result" class="mt-16" style="display:none"></div>
+      <div class="form-section mt-16" id="rec-periodo-progress-section" style="display:none">
+        <h3>Andamento</h3>
+        <div id="rec-periodo-progress" style="font-size:13px"></div>
+      </div>
+    </div>
+
   </div>
 
 </main>
@@ -1519,6 +1596,143 @@ function pollRecovery() {
         }
         loadRecoveryStatus();
         loadDashboard();
+      }
+    } catch(e) { /* ignore */ }
+  }, 3000);
+}
+
+// ─── Recovery tabs ────────────────────────────────────────────────
+function showRecTab(name) {
+  document.querySelectorAll('.rec-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
+  document.querySelectorAll('.rec-tab-content').forEach(c => c.style.display = 'none');
+  document.getElementById('rec-tab-' + name).style.display = '';
+}
+
+// ─── Recovery por Chave ────────────────────────────────────────────
+let _recPoll = null;
+
+async function startRecByChave() {
+  const tipo   = document.getElementById('rec-chave-tipo').value;
+  const raw    = document.getElementById('rec-chave-input').value;
+  const chaves = raw.split('\n').map(s => s.trim()).filter(Boolean);
+  if (!chaves.length) { alert('Informe ao menos uma chave de acesso.'); return; }
+
+  const btn    = document.getElementById('btn-rec-chave');
+  const cancel = document.getElementById('btn-rec-chave-cancel');
+  const status = document.getElementById('rec-chave-status');
+  const result = document.getElementById('rec-chave-result');
+  const progSec = document.getElementById('rec-chave-progress-section');
+
+  btn.disabled = true;
+  cancel.style.display = 'inline-flex';
+  status.textContent = 'Iniciando...';
+  result.style.display = 'none';
+  progSec.style.display = 'block';
+
+  try {
+    await api('/api/recuperacao/por-chave', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ tipo, chaves }),
+    });
+    pollRecuperacao('chave');
+  } catch(e) {
+    result.style.display = 'block';
+    result.innerHTML = `<div class="alert alert-error">❌ ${escHtml(e.message)}</div>`;
+    btn.disabled = false;
+    cancel.style.display = 'none';
+    status.textContent = '';
+  }
+}
+
+async function startRecByPeriodo() {
+  const tipo     = document.getElementById('rec-periodo-tipo').value;
+  const data_ini = document.getElementById('rec-periodo-ini').value;
+  const data_fim = document.getElementById('rec-periodo-fim').value;
+  if (!data_ini || !data_fim) { alert('Informe data inicial e final.'); return; }
+  if (data_ini > data_fim)    { alert('Data inicial deve ser anterior à data final.'); return; }
+
+  const confirm_msg = `Recuperar ${tipo.toUpperCase()} de ${data_ini} a ${data_fim}?\n\nO sistema vai varrer todos os NSUs — pode demorar horas para períodos longos.`;
+  if (!confirm(confirm_msg)) return;
+
+  const btn    = document.getElementById('btn-rec-periodo');
+  const cancel = document.getElementById('btn-rec-periodo-cancel');
+  const status = document.getElementById('rec-periodo-status');
+  const result = document.getElementById('rec-periodo-result');
+  const progSec = document.getElementById('rec-periodo-progress-section');
+
+  btn.disabled = true;
+  cancel.style.display = 'inline-flex';
+  status.textContent = 'Iniciando...';
+  result.style.display = 'none';
+  progSec.style.display = 'block';
+
+  try {
+    await api('/api/recuperacao/por-periodo', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ tipo, data_ini, data_fim }),
+    });
+    pollRecuperacao('periodo');
+  } catch(e) {
+    result.style.display = 'block';
+    result.innerHTML = `<div class="alert alert-error">❌ ${escHtml(e.message)}</div>`;
+    btn.disabled = false;
+    cancel.style.display = 'none';
+    status.textContent = '';
+  }
+}
+
+async function cancelRecuperacao() {
+  try { await api('/api/recuperacao/cancelar', { method: 'POST' }); } catch(e) {}
+}
+
+function pollRecuperacao(modo) {
+  if (_recPoll) clearInterval(_recPoll);
+  const progEl  = document.getElementById(modo === 'chave' ? 'rec-chave-progress' : 'rec-periodo-progress');
+  const statusEl = document.getElementById(modo === 'chave' ? 'rec-chave-status' : 'rec-periodo-status');
+  const resultEl = document.getElementById(modo === 'chave' ? 'rec-chave-result' : 'rec-periodo-result');
+  const btnEl    = document.getElementById(modo === 'chave' ? 'btn-rec-chave' : 'btn-rec-periodo');
+  const cancelEl = document.getElementById(modo === 'chave' ? 'btn-rec-chave-cancel' : 'btn-rec-periodo-cancel');
+
+  _recPoll = setInterval(async () => {
+    try {
+      const s = await api('/api/recuperacao/status');
+      if (s.running) {
+        statusEl.textContent = 'Recuperando...';
+        let info = `<span class="spin">⟳</span> Processando em segundo plano…`;
+        if (s.modo === 'chave') {
+          info += `<br>Processadas: ${s.processados || 0} / ${s.total || '?'} — Salvas: ${s.salvos || 0}`;
+          if (s.nsu_atual) info += `<br>Chave atual: <code style="font-size:11px">${escHtml(s.nsu_atual)}</code>`;
+        } else {
+          info += `<br>NSU atual: ${escHtml(s.nsu_atual || '—')} — Scaneados: ${s.scaneados || 0} — Salvos: ${s.salvos || 0}`;
+          if (s.data_ini) info += `<br>Período: ${s.data_ini} → ${s.data_fim}`;
+        }
+        if (progEl) progEl.innerHTML = info;
+      } else {
+        clearInterval(_recPoll);
+        _recPoll = null;
+        btnEl.disabled = false;
+        cancelEl.style.display = 'none';
+        statusEl.textContent = '';
+        resultEl.style.display = 'block';
+
+        if (s.last_result?.status === 'success') {
+          const r = s.last_result;
+          let msg = `<strong>Recuperação concluída!</strong><br>`;
+          if (s.modo === 'chave') {
+            msg += `Solicitados: ${r.solicitados} — Salvos: ${r.salvos}`;
+            if (r.erros?.length) msg += `<br>⚠️ ${r.erros.length} chave(s) com erro.`;
+          } else {
+            msg += `Scaneados: ${r.scaneados} NSUs — Salvos: ${r.salvos} documentos`;
+          }
+          resultEl.innerHTML = `<div class="alert alert-success">${msg}</div>`;
+          if (r.erros?.length) {
+            resultEl.innerHTML += `<div style="margin-top:8px;font-size:12px;color:var(--text-muted)">${r.erros.map(escHtml).join('<br>')}</div>`;
+          }
+        } else if (s.last_result?.status === 'error') {
+          resultEl.innerHTML = `<div class="alert alert-error">❌ ${escHtml(s.last_result.mensagem)}</div>`;
+        }
       }
     } catch(e) { /* ignore */ }
   }, 3000);

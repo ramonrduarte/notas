@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/files", tags=["files"])
 
-_ALL_TIPOS = ["nfe", "cte", "nfse", "nfe_hist", "cte_hist", "nfse_hist"]
+_ALL_TIPOS = ["nfe", "cte", "nfse", "nfe_hist", "cte_hist", "nfse_hist", "nfe_rec", "cte_rec"]
 
 
 @router.get("/list")
@@ -42,7 +42,7 @@ def get_pdf(path: str, tipo: str = ""):
         raise HTTPException(404, "Arquivo XML não encontrado.")
 
     xml_bytes = file_path.read_bytes()
-    base_tipo = tipo.replace("_hist", "") if tipo else ""
+    base_tipo = tipo.replace("_hist", "").replace("_rec", "") if tipo else ""
     path_lower = path.lower()
 
     if not base_tipo:
