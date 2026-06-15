@@ -52,8 +52,9 @@ def sync_status():
     sched = sched_module.get_next_run_times()
     logs = database.list_sync_logs(limit=40)
 
-    last_nfe = next((l for l in logs if l["tipo"] == "nfe" and l["status"] != "running"), None)
-    last_cte = next((l for l in logs if l["tipo"] == "cte" and l["status"] != "running"), None)
+    last_nfe  = next((l for l in logs if l["tipo"] == "nfe"  and l["status"] != "running"), None)
+    last_cte  = next((l for l in logs if l["tipo"] == "cte"  and l["status"] != "running"), None)
+    last_nfse = next((l for l in logs if l["tipo"] == "nfse" and l["status"] != "running"), None)
 
     # Detecta cooldown: 90 min após o último erro 656
     cooldown_until = None
@@ -73,6 +74,7 @@ def sync_status():
         "last_result": _sync_status["last_result"],
         "last_nfe": last_nfe,
         "last_cte": last_cte,
+        "last_nfse": last_nfse,
         "next_scheduled": sched.get("next_scheduled"),
         "next_retry": sched.get("next_retry"),
         "cooldown_until": cooldown_until,
@@ -81,9 +83,10 @@ def sync_status():
 
 @router.post("/reset-nsu")
 def reset_nsu(tipo: str = "all"):
-    tipos = ["nfe", "cte"] if tipo == "all" else [tipo]
+    tipos = ["nfe", "cte", "nfse"] if tipo == "all" else [tipo]
     for t in tipos:
-        database.set_ult_nsu(t, "000000000000000")
+        nsu_zero = "0" if t == "nfse" else "000000000000000"
+        database.set_ult_nsu(t, nsu_zero)
     return {"ok": True, "resetados": tipos}
 
 

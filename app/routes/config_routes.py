@@ -17,6 +17,7 @@ class ConfigUpdate(BaseModel):
     uf_code: str = "43"
     sync_nfe: bool = True
     sync_cte: bool = True
+    sync_nfse: bool = True
 
 
 @router.get("")
@@ -41,6 +42,7 @@ def update_config(body: ConfigUpdate):
     cfg["uf_code"] = body.uf_code
     cfg["sync_nfe"] = body.sync_nfe
     cfg["sync_cte"] = body.sync_cte
+    cfg["sync_nfse"] = body.sync_nfse
     config.save_config(cfg)
 
     sched.update_schedule(body.schedule_hour, body.schedule_minute)

@@ -18,6 +18,7 @@ def count_files():
         "total": database.count_documents()["total"],
         "nfe": database.count_documents("nfe")["total"],
         "cte": database.count_documents("cte")["total"],
+        "nfse": database.count_documents("nfse")["total"],
     }
 
 
@@ -26,6 +27,7 @@ def get_nsu_state():
     return {
         "nfe": database.get_ult_nsu("nfe"),
         "cte": database.get_ult_nsu("cte"),
+        "nfse": database.get_ult_nsu("nfse"),
     }
 
 

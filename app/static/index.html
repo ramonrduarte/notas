@@ -123,8 +123,9 @@
       display: inline-block; padding: 2px 8px; border-radius: 99px;
       font-size: 11px; font-weight: 600;
     }
-    .badge-nfe { background: #1e3a5f; color: #60a5fa; }
-    .badge-cte { background: #2d1b69; color: #a78bfa; }
+    .badge-nfe  { background: #1e3a5f; color: #60a5fa; }
+    .badge-cte  { background: #2d1b69; color: #a78bfa; }
+    .badge-nfse { background: #14372f; color: #34d399; }
     .badge-success { background: #14532d; color: #4ade80; }
     .badge-error { background: #7f1d1d; color: #f87171; }
     .badge-running { background: #451a03; color: #fbbf24; }
@@ -224,6 +225,11 @@
         <div class="card-sub">documentos baixados</div>
       </div>
       <div class="card">
+        <div class="card-label">Total NFS-e</div>
+        <div class="card-value text-primary" id="count-nfse">—</div>
+        <div class="card-sub">documentos baixados</div>
+      </div>
+      <div class="card">
         <div class="card-label">NSU NF-e</div>
         <div class="card-value" style="font-size:14px;margin-top:10px;" id="nsu-nfe">—</div>
         <div class="card-sub">último baixado</div>
@@ -231,6 +237,11 @@
       <div class="card">
         <div class="card-label">NSU CT-e</div>
         <div class="card-value" style="font-size:14px;margin-top:10px;" id="nsu-cte">—</div>
+        <div class="card-sub">último baixado</div>
+      </div>
+      <div class="card">
+        <div class="card-label">NSU NFS-e</div>
+        <div class="card-value" style="font-size:14px;margin-top:10px;" id="nsu-nfse">—</div>
         <div class="card-sub">último baixado</div>
       </div>
     </div>
@@ -256,6 +267,9 @@
         </button>
         <button class="btn btn-secondary" onclick="triggerSync('cte')" id="btn-sync-cte">
           Somente CT-e
+        </button>
+        <button class="btn btn-secondary" onclick="triggerSync('nfse')" id="btn-sync-nfse">
+          Somente NFS-e
         </button>
         <button class="btn btn-danger btn-sm" onclick="cancelSync()" id="btn-cancel" style="display:none">
           ✕ Cancelar
@@ -346,6 +360,9 @@
             <label style="display:flex;align-items:center;gap:6px;color:var(--text)">
               <input type="checkbox" id="cfg-sync-cte" checked /> CT-e
             </label>
+            <label style="display:flex;align-items:center;gap:6px;color:var(--text)">
+              <input type="checkbox" id="cfg-sync-nfse" checked /> NFS-e
+            </label>
           </div>
         </div>
       </div>
@@ -373,7 +390,7 @@
     <div class="form-section">
       <h3>Armazenamento de Arquivos</h3>
       <p style="font-size:13px;color:var(--text-muted);margin-bottom:14px;">
-        Os XMLs são salvos dentro do container em <code style="font-size:12px;background:var(--bg);padding:2px 6px;border-radius:4px">/data/xmls/nfe/AAAA/MM/</code> e <code style="font-size:12px;background:var(--bg);padding:2px 6px;border-radius:4px">/data/xmls/cte/AAAA/MM/</code>, mapeados para o volume Docker configurado no host. O banco de dados fica em <code style="font-size:12px;background:var(--bg);padding:2px 6px;border-radius:4px">/data/sefaz.db</code>.
+        Os XMLs são salvos dentro do container em <code style="font-size:12px;background:var(--bg);padding:2px 6px;border-radius:4px">/data/xmls/nfe/AAAA/MM/</code>, <code style="font-size:12px;background:var(--bg);padding:2px 6px;border-radius:4px">/data/xmls/cte/AAAA/MM/</code> e <code style="font-size:12px;background:var(--bg);padding:2px 6px;border-radius:4px">/data/xmls/nfse/AAAA/MM/</code>, mapeados para o volume Docker configurado no host. O banco de dados fica em <code style="font-size:12px;background:var(--bg);padding:2px 6px;border-radius:4px">/data/sefaz.db</code>.
       </p>
       <div id="storage-info" style="font-size:13px;color:var(--text-muted);margin-bottom:14px;"></div>
       <div class="flex gap-8">
@@ -389,6 +406,7 @@
       <div class="flex gap-8">
         <button class="btn btn-danger btn-sm" onclick="resetNSU('nfe')">Resetar NSU NF-e</button>
         <button class="btn btn-danger btn-sm" onclick="resetNSU('cte')">Resetar NSU CT-e</button>
+        <button class="btn btn-danger btn-sm" onclick="resetNSU('nfse')">Resetar NSU NFS-e</button>
         <button class="btn btn-danger btn-sm" onclick="resetNSU('all')">Resetar Tudo</button>
       </div>
     </div>
@@ -405,6 +423,7 @@
           <option value="">Todos</option>
           <option value="nfe">NF-e</option>
           <option value="cte">CT-e</option>
+          <option value="nfse">NFS-e</option>
         </select>
       </div>
       <div class="filter-group">
@@ -562,8 +581,9 @@ function renderSyncStatus(s) {
   if (!el) return;
 
   const tipos = [
-    { key: 'nfe', label: 'NF-e', last: s.last_nfe },
-    { key: 'cte', label: 'CT-e', last: s.last_cte },
+    { key: 'nfe',  label: 'NF-e',  last: s.last_nfe  },
+    { key: 'cte',  label: 'CT-e',  last: s.last_cte  },
+    { key: 'nfse', label: 'NFS-e', last: s.last_nfse },
   ];
 
   const inCooldown = s.cooldown_until && new Date() < new Date(s.cooldown_until);
@@ -638,7 +658,7 @@ function renderSyncStatus(s) {
   const tip = s.running ? 'Sync em andamento' :
               s.next_retry ? `Aguarde o retry automático das ${fmtTime(s.next_retry)}` :
               inCooldown ? `Aguarde até ${fmtTime(s.cooldown_until)}` : '';
-  ['btn-sync-all', 'btn-sync-nfe', 'btn-sync-cte'].forEach(id => {
+  ['btn-sync-all', 'btn-sync-nfe', 'btn-sync-cte', 'btn-sync-nfse'].forEach(id => {
     const btn = document.getElementById(id);
     if (!btn) return;
     btn.disabled = blocked;
@@ -666,10 +686,12 @@ async function loadDashboard() {
     api('/api/files/list?limit=10').catch(() => ({ documents: [] })),
   ]);
 
-  if (counts.nfe !== undefined) document.getElementById('count-nfe').textContent = counts.nfe;
-  if (counts.cte !== undefined) document.getElementById('count-cte').textContent = counts.cte;
-  if (nsu.nfe) document.getElementById('nsu-nfe').textContent = nsu.nfe;
-  if (nsu.cte) document.getElementById('nsu-cte').textContent = nsu.cte;
+  if (counts.nfe  !== undefined) document.getElementById('count-nfe').textContent  = counts.nfe;
+  if (counts.cte  !== undefined) document.getElementById('count-cte').textContent  = counts.cte;
+  if (counts.nfse !== undefined) document.getElementById('count-nfse').textContent = counts.nfse;
+  if (nsu.nfe)  document.getElementById('nsu-nfe').textContent  = nsu.nfe;
+  if (nsu.cte)  document.getElementById('nsu-cte').textContent  = nsu.cte;
+  if (nsu.nfse) document.getElementById('nsu-nfse').textContent = nsu.nfse;
 
   const warn = document.getElementById('alert-config');
   if (warn) warn.style.display = (!cfg.has_cert || !cfg.cnpj) ? 'block' : 'none';
@@ -793,8 +815,9 @@ async function loadConfig() {
     document.getElementById('cfg-uf').value = cfg.uf_code || '43';
     document.getElementById('cfg-hour').value = cfg.schedule_hour ?? 7;
     document.getElementById('cfg-minute').value = cfg.schedule_minute ?? 0;
-    document.getElementById('cfg-sync-nfe').checked = cfg.sync_nfe !== false;
-    document.getElementById('cfg-sync-cte').checked = cfg.sync_cte !== false;
+    document.getElementById('cfg-sync-nfe').checked  = cfg.sync_nfe  !== false;
+    document.getElementById('cfg-sync-cte').checked  = cfg.sync_cte  !== false;
+    document.getElementById('cfg-sync-nfse').checked = cfg.sync_nfse !== false;
 
     const certStatus = document.getElementById('cert-status');
     certStatus.style.display = 'block';
@@ -847,6 +870,7 @@ async function uploadCert() {
         uf_code: cfg.uf_code,
         sync_nfe: cfg.sync_nfe,
         sync_cte: cfg.sync_cte,
+        sync_nfse: cfg.sync_nfse,
       }),
     });
   }
@@ -871,8 +895,9 @@ async function saveConfig() {
     schedule_minute: parseInt(document.getElementById('cfg-minute').value),
     ambiente: document.getElementById('cfg-ambiente').value,
     uf_code: document.getElementById('cfg-uf').value,
-    sync_nfe: document.getElementById('cfg-sync-nfe').checked,
-    sync_cte: document.getElementById('cfg-sync-cte').checked,
+    sync_nfe:  document.getElementById('cfg-sync-nfe').checked,
+    sync_cte:  document.getElementById('cfg-sync-cte').checked,
+    sync_nfse: document.getElementById('cfg-sync-nfse').checked,
   };
   try {
     await api('/api/config', {
@@ -939,7 +964,7 @@ function filterTable() {
 
   let filtered = allDocs.filter(d => {
     if (tipo && d.tipo !== tipo) return false;
-    if (schema === 'autorizadas' && !((d.schema||'').startsWith('procNFe') || (d.schema||'').startsWith('procCTe'))) return false;
+    if (schema === 'autorizadas' && !((d.schema||'').startsWith('procNFe') || (d.schema||'').startsWith('procCTe') || d.schema === 'NFSE')) return false;
     if (schema === 'eventos' && !((d.schema||'').toLowerCase().includes('evento'))) return false;
     if (schema === 'resumos' && !(d.schema||'').startsWith('res')) return false;
     if (chave && !(d.chave || '').toLowerCase().includes(chave) && !(d.nsu || '').includes(chave)) return false;
@@ -992,9 +1017,12 @@ function showPurgeResult(msg, type) {
 
 function schemaLabel(schema) {
   if (!schema) return '—';
-  if (schema.startsWith('procNFe') || schema.startsWith('procCTe')) return '<span class="badge badge-success">Autorizada</span>';
-  if (schema.includes('Evento') || schema.includes('evento')) return '<span class="badge" style="background:#292524;color:#a8a29e">Evento</span>';
-  if (schema.startsWith('res')) return '<span class="badge" style="background:#1c1917;color:#78716c">Resumo</span>';
+  if (schema.startsWith('procNFe') || schema.startsWith('procCTe') || schema === 'NFSE')
+    return '<span class="badge badge-success">Autorizada</span>';
+  if (schema.includes('Evento') || schema.includes('evento'))
+    return '<span class="badge" style="background:#292524;color:#a8a29e">Evento</span>';
+  if (schema.startsWith('res'))
+    return '<span class="badge" style="background:#1c1917;color:#78716c">Resumo</span>';
   return `<span style="font-size:10px;color:var(--text-muted)">${escHtml(schema)}</span>`;
 }
 

@@ -1,7 +1,7 @@
 import logging
 import threading
 from app import config, database
-from app.services import nfe_service, cte_service
+from app.services import nfe_service, cte_service, nfse_service
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +35,12 @@ def run_sync(tipo: str = "all", cancel_flag: threading.Event = None) -> dict:
         else:
             results["cte"] = _sync_tipo("cte", pfx_path, cfg["cert_password"], cnpj, xml_dir, tp_amb, cuf, cancel_flag)
 
+    if tipo in ("nfse", "all") and cfg.get("sync_nfse", True):
+        if cancel_flag and cancel_flag.is_set():
+            results["nfse"] = {"status": "error", "mensagem": "Cancelado pelo usuário."}
+        else:
+            results["nfse"] = _sync_tipo("nfse", pfx_path, cfg["cert_password"], cnpj, xml_dir, tp_amb, cuf, cancel_flag)
+
     return results
 
 
@@ -49,9 +55,13 @@ def _sync_tipo(tipo: str, pfx_path, password, cnpj, xml_dir, tp_amb, cuf,
             new_nsu, total, meta_list = nfe_service.sync_nfe(
                 pfx_path, password, cnpj, ult_nsu, xml_dir, tp_amb, cuf, cancel_flag
             )
-        else:
+        elif tipo == "cte":
             new_nsu, total, meta_list = cte_service.sync_cte(
                 pfx_path, password, cnpj, ult_nsu, xml_dir, tp_amb, cuf, cancel_flag
+            )
+        else:  # nfse
+            new_nsu, total, meta_list = nfse_service.sync_nfse(
+                pfx_path, password, cnpj, ult_nsu, xml_dir, tp_amb, cancel_flag
             )
 
         for m in meta_list:

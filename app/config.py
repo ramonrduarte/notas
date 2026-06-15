@@ -14,6 +14,7 @@ def ensure_dirs():
     CERT_DIR.mkdir(parents=True, exist_ok=True)
     (XML_DIR / "nfe").mkdir(parents=True, exist_ok=True)
     (XML_DIR / "cte").mkdir(parents=True, exist_ok=True)
+    (XML_DIR / "nfse").mkdir(parents=True, exist_ok=True)
 
 
 def load_config() -> dict:
@@ -29,6 +30,7 @@ def load_config() -> dict:
         "uf_code": "43",  # RS=43
         "sync_nfe": True,
         "sync_cte": True,
+        "sync_nfse": True,
     }
 
 
