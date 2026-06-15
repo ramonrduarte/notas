@@ -116,6 +116,8 @@
     .table-wrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
     table { width: 100%; border-collapse: collapse; font-size: 13px; }
     thead { background: var(--surface2); }
+    #docs-main-table.no-tomador .col-tomador { display: none; }
+    #docs-main-table.no-tomador col.col-tomador { display: none; width: 0; }
     th { padding: 10px 14px; text-align: left; color: var(--text-muted); font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: .5px; }
     td { padding: 10px 14px; border-top: 1px solid var(--border); vertical-align: middle; }
     tr:hover td { background: var(--surface2); }
@@ -551,7 +553,7 @@
     </div>
 
     <div class="table-wrap">
-      <table style="table-layout:fixed;width:100%">
+      <table id="docs-main-table" style="table-layout:fixed;width:100%">
         <colgroup>
           <col style="width:34px">
           <col style="width:80px">
@@ -1266,14 +1268,7 @@ function filterTable() {
     `${filteredDocs.length} de ${allDocs.length} documentos`;
 
   const showTomador = !tipo || tipo === 'cte' || tipo === 'cte_hist' || tipo === 'cte_rec';
-  document.querySelectorAll('.col-tomador').forEach(el => {
-    if (el.tagName === 'COL') {
-      el.style.display = showTomador ? '' : 'none';
-      el.style.width = showTomador ? '' : '0';
-    } else {
-      el.style.display = showTomador ? '' : 'none';
-    }
-  });
+  document.getElementById('docs-main-table')?.classList.toggle('no-tomador', !showTomador);
 
   renderPage();
   renderPagination();
