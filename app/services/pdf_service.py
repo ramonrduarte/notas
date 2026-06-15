@@ -33,6 +33,14 @@ def _fmt_date(s: str) -> str:
     return f"{p[2]}/{p[1]}/{p[0]}" if len(p) == 3 else s[:10]
 
 
+def _fmt_datetime(s: str) -> str:
+    if not s:
+        return "—"
+    date_part = _fmt_date(s[:10])
+    time_part = s[11:19] if len(s) > 10 else ""
+    return f"{date_part} {time_part}".strip()
+
+
 def _fmt_aliq(v: str) -> str:
     try:
         return f"{float(v):.2f}%".replace(".", ",")
@@ -43,7 +51,6 @@ def _fmt_aliq(v: str) -> str:
 # ─── NF-e DANFE ───────────────────────────────────────────────────────────────
 
 def generate_danfe(xml_bytes: bytes) -> bytes:
-    """Gera DANFE (NF-e) usando brazilfiscalreport."""
     from brazilfiscalreport.danfe import Danfe
     xml_str = xml_bytes.decode("utf-8", errors="replace")
     danfe = Danfe(xml=xml_str)
@@ -55,7 +62,6 @@ def generate_danfe(xml_bytes: bytes) -> bytes:
 # ─── CT-e DACTE ───────────────────────────────────────────────────────────────
 
 def generate_dacte(xml_bytes: bytes) -> bytes:
-    """Gera DACTE (CT-e) usando brazilfiscalreport."""
     from brazilfiscalreport.dacte import Dacte
     xml_str = xml_bytes.decode("utf-8", errors="replace")
     dacte = Dacte(xml=xml_str)
@@ -64,10 +70,10 @@ def generate_dacte(xml_bytes: bytes) -> bytes:
     return buf.getvalue()
 
 
-# ─── NFS-e Nacional ───────────────────────────────────────────────────────────
+# ─── NFS-e Nacional — DANFSe ──────────────────────────────────────────────────
 
 def generate_nfse_pdf(xml_bytes: bytes) -> bytes:
-    """Gera PDF da NFS-e Nacional usando ReportLab."""
+    """Gera PDF da NFS-e Nacional no formato DANFSe (layout do portal adn.nfse.gov.br)."""
     from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
     from reportlab.lib.pagesizes import A4
     from reportlab.lib import colors
@@ -77,224 +83,431 @@ def generate_nfse_pdf(xml_bytes: bytes) -> bytes:
     root = ET.fromstring(xml_bytes)
     ns = NS_NFSE
 
-    # Identificação
-    n_nfse      = root.findtext(f".//{{{ns}}}nNfse") or "—"
-    serie       = root.findtext(f".//{{{ns}}}serie") or "—"
-    dh_emissao  = root.findtext(f".//{{{ns}}}dhProc") or root.findtext(f".//{{{ns}}}dhEmi") or ""
-    competencia = (root.findtext(f".//{{{ns}}}dCompet") or "")[:7]
+    def g(tag):
+        return root.findtext(f".//{{{ns}}}{tag}") or ""
 
-    # Prestador
-    prest = root.find(f".//{{{ns}}}prest")
-    if prest is not None:
-        prest_nome = prest.findtext(f"{{{ns}}}xNome") or ""
-        prest_cnpj = _fmt_cnpj(prest.findtext(f"{{{ns}}}CNPJ") or "")
-        prest_im   = prest.findtext(f"{{{ns}}}IM") or "—"
-    else:
-        prest_nome = prest_cnpj = prest_im = "—"
-
-    def _end(el):
+    def ef(el, tag):
         if el is None:
-            return "", ""
-        logr  = " ".join(filter(None, [el.findtext(f"{{{ns}}}xLgr"),
-                                       el.findtext(f"{{{ns}}}nro"),
-                                       el.findtext(f"{{{ns}}}xCpl")]))
-        bairro = el.findtext(f"{{{ns}}}xBairro") or ""
-        mun    = el.findtext(f"{{{ns}}}xMun") or ""
-        uf     = el.findtext(f"{{{ns}}}UF") or ""
-        cep    = el.findtext(f"{{{ns}}}CEP") or ""
-        linha1 = ", ".join(filter(None, [logr, bairro]))
-        linha2 = " — ".join(filter(None, [f"{mun}/{uf}" if uf else mun,
-                                          f"CEP {cep}" if cep else ""]))
-        return linha1, linha2
+            return ""
+        return el.findtext(f"{{{ns}}}{tag}") or ""
 
-    prest_end = root.find(f".//{{{ns}}}endPrest") or root.find(f".//{{{ns}}}end")
-    prest_l1, prest_l2 = _end(prest_end)
+    # ── Identificação ────────────────────────────────────────────────────────
+    n_nfse      = g("nNfse") or "—"
+    ch_nfse     = g("chNFSe")
+    dh_emissao  = g("dhProc") or g("dhEmi")
+    competencia = g("dCompet")[:7] if g("dCompet") else ""
+    n_dps       = g("nDPS") or "—"
+    serie_dps   = g("serieDPS") or g("serie") or "—"
+    dh_emi_dps  = g("dhEmiDPS") or dh_emissao
+    xmun        = g("xMunPrestacao") or g("xMunIncid") or g("xMun") or ""
 
-    # Tomador
+    # ── Prestador (Emitente) ─────────────────────────────────────────────────
+    prest = root.find(f".//{{{ns}}}prest")
+    p_cnpj  = _fmt_cnpj(ef(prest, "CNPJ") or ef(prest, "CPF"))
+    p_nome  = ef(prest, "xNome") or "—"
+    p_im    = ef(prest, "IM") or "—"
+    p_fone  = ef(prest, "fone") or "—"
+    p_email = ef(prest, "email") or "—"
+    p_end   = prest.find(f"{{{ns}}}end") if prest is not None else None
+
+    def parse_end(el):
+        if el is None:
+            return "", "", "", "", ""
+        logr   = " ".join(filter(None, [ef(el, "xLgr"), ef(el, "nro"), ef(el, "xCpl")]))
+        bairro = ef(el, "xBairro")
+        mun    = ef(el, "xMun")
+        uf     = ef(el, "UF")
+        cep    = ef(el, "CEP")
+        return logr, bairro, mun, uf, cep
+
+    p_logr, p_bairro, p_mun, p_uf, p_cep = parse_end(p_end)
+    p_mun_uf = f"{p_mun} - {p_uf}" if p_uf else p_mun
+
+    # Simples Nacional / Regime
+    opSimpNac = g("opSimpNac")
+    simpLabel = {"1": "Optante", "2": "Não optante"}.get(opSimpNac, "Não optante")
+    regTrib   = g("regTrib")
+    regMap    = {"1": "Microempreendedor Individual (MEI)", "2": "Estimativa",
+                 "3": "Sociedade de Profissionais", "4": "Cooperativa",
+                 "5": "MEI Indústria", "6": "ME/EPP Simples Nacional"}
+    regLabel  = regMap.get(regTrib, "Cálculo pelo SN") if regTrib else "—"
+
+    # ── Tomador ──────────────────────────────────────────────────────────────
     toma = root.find(f".//{{{ns}}}toma")
-    if toma is not None:
-        toma_nome = toma.findtext(f"{{{ns}}}xNome") or ""
-        toma_doc  = _fmt_cnpj(toma.findtext(f"{{{ns}}}CNPJ") or
-                               toma.findtext(f"{{{ns}}}CPF") or "")
-        toma_end_el = toma.find(f"{{{ns}}}end")
-        toma_l1, toma_l2 = _end(toma_end_el)
-    else:
-        toma_nome = toma_doc = toma_l1 = toma_l2 = "—"
+    t_doc   = _fmt_cnpj(ef(toma, "CNPJ") or ef(toma, "CPF")) or "—"
+    t_nome  = ef(toma, "xNome") or "—"
+    t_im    = ef(toma, "IM") or "—"
+    t_fone  = ef(toma, "fone") or "—"
+    t_email = ef(toma, "email") or "—"
+    t_end   = toma.find(f"{{{ns}}}end") if toma is not None else None
+    t_logr, t_bairro, t_mun, t_uf, t_cep = parse_end(t_end)
+    t_mun_uf = f"{t_mun} - {t_uf}" if t_uf else t_mun
 
-    # Serviço
-    xDescServ = root.findtext(f".//{{{ns}}}xDescServ") or "—"
-    cServ     = root.findtext(f".//{{{ns}}}cServ") or "—"
-    xServMun  = root.findtext(f".//{{{ns}}}xServMun") or ""
-    xMunIncid = root.findtext(f".//{{{ns}}}xMunIncid") or ""
-    retISSQN  = root.findtext(f".//{{{ns}}}retISSQN") or "0"
+    # ── Serviço ──────────────────────────────────────────────────────────────
+    cTribNac   = g("cTribNac") or "—"
+    cTribMun   = g("cTribMun") or g("cServ") or "—"
+    xDescServ  = g("xDescServ") or "—"
+    xLocPrest  = g("xMunPrestacao") or g("xMunIncid") or "—"
+    xPaisPrest = g("xPais") or "Brasil"
+    cNBS       = g("cNBS")
 
-    # Valores
-    vServ  = root.findtext(f".//{{{ns}}}vServ") or ""
-    vBC    = root.findtext(f".//{{{ns}}}vBC") or vServ
-    pAliq  = root.findtext(f".//{{{ns}}}pAliq") or ""
-    vISSQN = root.findtext(f".//{{{ns}}}vISSQN") or ""
-    vLiq   = root.findtext(f".//{{{ns}}}vLiq") or vServ
+    # ── Tributação Municipal ──────────────────────────────────────────────────
+    retISSQN   = g("retISSQN") or "0"
+    ret_label  = "Retido" if retISSQN == "1" else "Não Retido"
+    opTrib     = g("opTributacao") or "—"
+    xPaisRes   = g("xPaisResultado") or xPaisPrest
+    xMunIncid  = g("xMunIncid") or xLocPrest
+    regEspTrib = g("regEspTrib") or "Nenhum"
+    tpImun     = g("tpImun") or "—"
+    nProc      = g("nProcesso") or "—"
+    vServ      = g("vServ") or g("vServPrest") or ""
+    vDescInc   = g("vDescIncond") or ""
+    vDedRed    = g("vDedRed") or g("vDed") or ""
+    vBC        = g("vBC") or vServ
+    pAliq      = g("pAliq") or ""
+    vISSQN     = g("vISSQN") or ""
 
-    # ── PDF ───────────────────────────────────────────────────────────────────
-    buf = BytesIO()
-    W = A4[0] - 30 * mm
-    doc = SimpleDocTemplate(buf, pagesize=A4,
-                            leftMargin=15 * mm, rightMargin=15 * mm,
-                            topMargin=15 * mm, bottomMargin=15 * mm)
+    # ── Tributação Federal ────────────────────────────────────────────────────
+    vIRRF    = g("vIRRF") or "—"
+    vCP      = g("vCP") or g("vCPRPS") or "—"
+    vCSLL    = g("vCSLL") or "—"
+    vPIS     = g("vPIS") or ""
+    vCOFINS  = g("vCOFINS") or ""
+    try:
+        vPisCofins = f"{float(vPIS or 0) + float(vCOFINS or 0):.2f}" if (vPIS or vCOFINS) else ""
+    except Exception:
+        vPisCofins = ""
+    descCS = "2 - PIS/COFINS Não Retidos" if (vPIS or vCOFINS) else "—"
 
-    BLUE  = colors.HexColor("#1e3a5f")
-    LBLUE = colors.HexColor("#dbeafe")
-    LGRAY = colors.HexColor("#f1f5f9")
-    BORD  = colors.HexColor("#334155")
-    SEP   = colors.HexColor("#cbd5e1")
+    # ── Valor Total ───────────────────────────────────────────────────────────
+    vDescCond = g("vDescCond") or ""
+    vISSQNRet = g("vISSQNRet") or (vISSQN if retISSQN == "1" else "")
+    vRetFed   = g("vRetFed") or ""
+    vLiq      = g("vLiq") or vServ
+
+    # ── Layout PDF ───────────────────────────────────────────────────────────
+    buf  = BytesIO()
+    LM   = 8 * mm
+    W    = A4[0] - 2 * LM
+    doc  = SimpleDocTemplate(buf, pagesize=A4,
+                             leftMargin=LM, rightMargin=LM,
+                             topMargin=8 * mm, bottomMargin=8 * mm)
+
+    BLUE  = colors.HexColor("#003580")
+    LBLUE = colors.HexColor("#cfe2ff")
+    BORD  = colors.HexColor("#aaaaaa")
+    LBRD  = colors.HexColor("#dddddd")
     WHITE = colors.white
     BLACK = colors.black
+    DGRAY = colors.HexColor("#333333")
 
-    def sty(name, **kw):
-        base = dict(fontName="Helvetica", fontSize=8, textColor=BLACK, leading=11)
-        base.update(kw)
-        return ParagraphStyle(name, **base)
+    def S(n, **kw):
+        d = dict(fontName="Helvetica", fontSize=7, textColor=BLACK, leading=9, spaceAfter=0)
+        d.update(kw)
+        return ParagraphStyle(n, **d)
 
-    S_HDR   = sty("hdr",   fontName="Helvetica-Bold", fontSize=9,  textColor=WHITE, alignment=1)
-    S_TITLE = sty("title", fontName="Helvetica-Bold", fontSize=13, textColor=WHITE, alignment=1)
-    S_SUB   = sty("sub",   fontSize=8, textColor=WHITE, alignment=1)
-    S_LBL   = sty("lbl",   fontName="Helvetica-Bold", fontSize=7,  textColor=BORD)
-    S_VAL   = sty("val")
-    S_BIG   = sty("big",   fontName="Helvetica-Bold", fontSize=11)
-    S_DESC  = sty("desc",  leading=12)
-    S_FOOT  = sty("foot",  fontSize=7, textColor=BORD, alignment=1)
+    SL  = S("L",  fontName="Helvetica-Bold", fontSize=6,  textColor=DGRAY, leading=8)
+    SV  = S("V")
+    SBD = S("BD", fontName="Helvetica-Bold")
+    SSC = S("SC", fontName="Helvetica-Bold", fontSize=7, textColor=WHITE, leading=9)
+    SCH = S("CH", fontName="Courier",        fontSize=7, alignment=1, leading=9)
+    SFT = S("FT", fontSize=6, textColor=colors.HexColor("#666"), alignment=1, leading=8)
 
-    def sec(text):
-        t = Table([[Paragraph(text, S_HDR)]], colWidths=[W])
+    SP1 = Spacer(1, 1 * mm)
+
+    BASE = [
+        ("FONTSIZE",      (0, 0), (-1, -1), 7),
+        ("TOPPADDING",    (0, 0), (-1, -1), 2),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 5),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 3),
+        ("BOX",           (0, 0), (-1, -1), 0.5, BORD),
+        ("LINEAFTER",     (0, 0), (-2, -1), 0.3, LBRD),
+        ("LINEBELOW",     (0, 0), (-1, -2), 0.3, LBRD),
+    ]
+
+    def sec(txt):
+        t = Table([[Paragraph(txt, SSC)]], colWidths=[W])
         t.setStyle(TableStyle([
             ("BACKGROUND",    (0, 0), (-1, -1), BLUE),
-            ("TOPPADDING",    (0, 0), (-1, -1), 5),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
-            ("LEFTPADDING",   (0, 0), (-1, -1), 8),
-        ]))
-        return t
-
-    def info_tbl(rows, col_w=None):
-        col_w = col_w or [40 * mm, W / 2 - 40 * mm, 35 * mm, W / 2 - 35 * mm]
-        t = Table(rows, colWidths=col_w)
-        t.setStyle(TableStyle([
-            ("FONTSIZE",      (0, 0), (-1, -1), 8),
-            ("TOPPADDING",    (0, 0), (-1, -1), 4),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ("TOPPADDING",    (0, 0), (-1, -1), 3),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
             ("LEFTPADDING",   (0, 0), (-1, -1), 6),
-            ("LINEBELOW",     (0, 0), (-1, -2), 0.3, SEP),
-            ("BOX",           (0, 0), (-1, -1), 0.5, BORD),
         ]))
         return t
 
-    SP = Spacer(1, 3 * mm)
+    def mktbl(rows, cw, extra=None):
+        t = Table(rows, colWidths=cw)
+        t.setStyle(TableStyle(list(BASE) + (extra or [])))
+        return t
+
     elems = []
 
-    # Cabeçalho
+    # ── Cabeçalho ─────────────────────────────────────────────────────────────
     hdr = Table([[
-        Paragraph("PREFEITURA MUNICIPAL", S_SUB),
-        Paragraph("NOTA FISCAL DE SERVIÇOS ELETRÔNICA", S_TITLE),
-        Paragraph(f"Nº {n_nfse}<br/>Série: {serie}", S_SUB),
-    ]], colWidths=[W * 0.18, W * 0.64, W * 0.18])
+        Paragraph(
+            "<font name='Helvetica-Bold' size='20' color='#003580'>NFS</font>"
+            "<font name='Helvetica-Bold' size='20' color='#2980b9'>e</font><br/>"
+            "<font name='Helvetica' size='6'>Nota Fiscal de Serviço Eletrônica</font>",
+            S("brd", leading=26)),
+        Paragraph(
+            "<font name='Helvetica-Bold' size='10'>DANFSe v1.0</font><br/>"
+            "<font name='Helvetica' size='8'>Documento Auxiliar da NFS-e</font>",
+            S("ttl", alignment=1, leading=16)),
+        Paragraph(xmun,
+            S("mun", fontName="Helvetica-Bold", fontSize=10, alignment=2, leading=13)),
+    ]], colWidths=[W * 0.22, W * 0.54, W * 0.24])
     hdr.setStyle(TableStyle([
-        ("BACKGROUND",    (0, 0), (-1, -1), BLUE),
-        ("ALIGN",         (0, 0), (-1, -1), "CENTER"),
         ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
-        ("TOPPADDING",    (0, 0), (-1, -1), 10),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
-    ]))
-    elems.append(hdr)
-    elems.append(SP)
-
-    # Data / Competência
-    inf = Table([[
-        Paragraph(f"<b>Data de Emissão:</b> {_fmt_date(dh_emissao)}", S_VAL),
-        Paragraph(f"<b>Competência:</b> {competencia or '—'}", S_VAL),
-    ]], colWidths=[W / 2, W / 2])
-    inf.setStyle(TableStyle([
-        ("BACKGROUND",    (0, 0), (-1, -1), LGRAY),
-        ("LEFTPADDING",   (0, 0), (-1, -1), 8),
-        ("TOPPADDING",    (0, 0), (-1, -1), 5),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ("TOPPADDING",    (0, 0), (-1, -1), 6),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 6),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 6),
         ("BOX",           (0, 0), (-1, -1), 0.5, BORD),
+        ("LINEAFTER",     (0, 0), (1, 0),   0.3, BORD),
     ]))
-    elems.append(inf)
-    elems.append(SP)
+    elems += [hdr, SP1]
 
-    # Prestador
-    elems.append(sec("PRESTADOR DE SERVIÇOS"))
-    elems.append(info_tbl([
-        [Paragraph("<b>Razão Social / Nome:</b>", S_LBL), Paragraph(prest_nome, S_VAL),
-         Paragraph("<b>CNPJ:</b>", S_LBL),              Paragraph(prest_cnpj, S_VAL)],
-        [Paragraph("<b>Inscrição Municipal:</b>", S_LBL), Paragraph(prest_im, S_VAL),
-         Paragraph("", S_LBL),                           Paragraph("", S_VAL)],
-        [Paragraph("<b>Endereço:</b>", S_LBL),            Paragraph(prest_l1 or "—", S_VAL),
-         Paragraph("<b>Município/UF:</b>", S_LBL),        Paragraph(prest_l2 or "—", S_VAL)],
+    # ── Chave de Acesso ───────────────────────────────────────────────────────
+    if ch_nfse:
+        ca = Table([
+            [Paragraph("Chave de Acesso da NFS-e", SL)],
+            [Paragraph(ch_nfse, SCH)],
+        ], colWidths=[W])
+        ca.setStyle(TableStyle([
+            ("TOPPADDING",    (0, 0), (-1, -1), 3),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+            ("LEFTPADDING",   (0, 0), (-1, -1), 6),
+            ("BOX",           (0, 0), (-1, -1), 0.5, BORD),
+            ("LINEBELOW",     (0, 0), (-1, 0),  0.3, LBRD),
+        ]))
+        elems += [ca, SP1]
+
+    # ── Números NFS-e / DPS ───────────────────────────────────────────────────
+    W3 = [W * 0.18, W * 0.18, W * 0.64]
+    elems.append(mktbl([
+        [Paragraph("Número da NFS-e", SL),
+         Paragraph("Competência da NFS-e", SL),
+         Paragraph("Data e Hora de emissão da NFS-e", SL)],
+        [Paragraph(n_nfse, SBD),
+         Paragraph(competencia or "—", SV),
+         Paragraph(_fmt_datetime(dh_emissao), SV)],
+        [Paragraph("Número da DPS", SL),
+         Paragraph("Série da DPS", SL),
+         Paragraph("Data e Hora de emissão da DPS", SL)],
+        [Paragraph(n_dps, SV),
+         Paragraph(serie_dps, SV),
+         Paragraph(_fmt_datetime(dh_emi_dps), SV)],
+    ], W3))
+    elems.append(SP1)
+
+    # ── EMITENTE DA NFS-e ────────────────────────────────────────────────────
+    Wa, Wb, Wc, Wd = W * 0.28, W * 0.25, W * 0.25, W * 0.22
+    elems.append(sec("EMITENTE DA NFS-e"))
+    elems.append(mktbl([
+        [Paragraph("CNPJ / CPF / NIF", SL),
+         Paragraph("Inscrição Municipal", SL),
+         Paragraph("Telefone", SL),
+         Paragraph("", SL)],
+        [Paragraph(p_cnpj, SBD),
+         Paragraph(p_im, SV),
+         Paragraph(p_fone, SV),
+         Paragraph("", SV)],
+        [Paragraph("Nome / Nome Empresarial", SL),
+         Paragraph("", SL),
+         Paragraph("E-mail", SL),
+         Paragraph("", SL)],
+        [Paragraph(p_nome, SBD),
+         Paragraph("", SV),
+         Paragraph(p_email, SV),
+         Paragraph("", SV)],
+        [Paragraph("Endereço", SL),
+         Paragraph("Bairro", SL),
+         Paragraph("Município", SL),
+         Paragraph("CEP", SL)],
+        [Paragraph(p_logr or "—", SV),
+         Paragraph(p_bairro or "—", SV),
+         Paragraph(p_mun_uf or "—", SV),
+         Paragraph(p_cep or "—", SV)],
+        [Paragraph("Simples Nacional na Data de Competência", SL),
+         Paragraph("", SL),
+         Paragraph("Regime de Apuração Tributária pelo SN", SL),
+         Paragraph("", SL)],
+        [Paragraph(simpLabel, SV),
+         Paragraph("", SV),
+         Paragraph(regLabel, SV),
+         Paragraph("", SV)],
+    ], [Wa, Wb, Wc, Wd], extra=[
+        ("SPAN", (0, 2), (1, 2)), ("SPAN", (0, 3), (1, 3)),
+        ("SPAN", (2, 2), (3, 2)), ("SPAN", (2, 3), (3, 3)),
+        ("SPAN", (0, 6), (1, 6)), ("SPAN", (0, 7), (1, 7)),
+        ("SPAN", (2, 6), (3, 6)), ("SPAN", (2, 7), (3, 7)),
     ]))
-    elems.append(SP)
+    elems.append(SP1)
 
-    # Tomador
-    elems.append(sec("TOMADOR DE SERVIÇOS"))
-    elems.append(info_tbl([
-        [Paragraph("<b>Razão Social / Nome:</b>", S_LBL), Paragraph(toma_nome, S_VAL),
-         Paragraph("<b>CNPJ / CPF:</b>", S_LBL),         Paragraph(toma_doc, S_VAL)],
-        [Paragraph("<b>Endereço:</b>", S_LBL),            Paragraph(toma_l1 or "—", S_VAL),
-         Paragraph("<b>Município/UF:</b>", S_LBL),        Paragraph(toma_l2 or "—", S_VAL)],
+    # ── TOMADOR DO SERVIÇO ───────────────────────────────────────────────────
+    elems.append(sec("TOMADOR DO SERVIÇO"))
+    elems.append(mktbl([
+        [Paragraph("CNPJ / CPF / NIF", SL),
+         Paragraph("Inscrição Municipal", SL),
+         Paragraph("Telefone", SL),
+         Paragraph("", SL)],
+        [Paragraph(t_doc, SBD),
+         Paragraph(t_im, SV),
+         Paragraph(t_fone, SV),
+         Paragraph("", SV)],
+        [Paragraph("Nome / Nome Empresarial", SL),
+         Paragraph("", SL),
+         Paragraph("E-mail", SL),
+         Paragraph("", SL)],
+        [Paragraph(t_nome, SBD),
+         Paragraph("", SV),
+         Paragraph(t_email, SV),
+         Paragraph("", SV)],
+        [Paragraph("Endereço", SL),
+         Paragraph("Bairro", SL),
+         Paragraph("Município", SL),
+         Paragraph("CEP", SL)],
+        [Paragraph(t_logr or "—", SV),
+         Paragraph(t_bairro or "—", SV),
+         Paragraph(t_mun_uf or "—", SV),
+         Paragraph(t_cep or "—", SV)],
+    ], [Wa, Wb, Wc, Wd], extra=[
+        ("SPAN", (0, 2), (1, 2)), ("SPAN", (0, 3), (1, 3)),
+        ("SPAN", (2, 2), (3, 2)), ("SPAN", (2, 3), (3, 3)),
     ]))
-    elems.append(SP)
+    elems.append(SP1)
 
-    # Serviço
-    elems.append(sec("DISCRIMINAÇÃO DOS SERVIÇOS"))
-    desc_tbl = Table([
-        [Paragraph(xDescServ, S_DESC)],
-        [Paragraph(
-            f"<b>Cód. Serviço:</b> {cServ}"
-            + (f"   <b>Descrição LC 116:</b> {xServMun}" if xServMun else "")
-            + (f"   <b>Município de Incidência:</b> {xMunIncid}" if xMunIncid else ""),
-            S_VAL)],
-    ], colWidths=[W])
-    desc_tbl.setStyle(TableStyle([
-        ("TOPPADDING",    (0, 0), (-1, -1), 5),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
-        ("LEFTPADDING",   (0, 0), (-1, -1), 8),
-        ("LINEBELOW",     (0, 0), (0, -2),  0.3, SEP),
-        ("BOX",           (0, 0), (-1, -1), 0.5, BORD),
+    # ── SERVIÇO PRESTADO ─────────────────────────────────────────────────────
+    elems.append(sec("SERVIÇO PRESTADO"))
+    W4 = W / 4
+    elems.append(mktbl([
+        [Paragraph("Código de Tributação Nacional", SL),
+         Paragraph("Código de Tributação Municipal", SL),
+         Paragraph("Local de Prestação", SL),
+         Paragraph("País da Prestação", SL)],
+        [Paragraph(cTribNac, SV),
+         Paragraph(cTribMun, SV),
+         Paragraph(xLocPrest, SV),
+         Paragraph(xPaisPrest, SV)],
+        [Paragraph("Descrição do Serviço", SL),
+         Paragraph("", SL), Paragraph("", SL), Paragraph("", SL)],
+        [Paragraph(xDescServ, SV),
+         Paragraph("", SV), Paragraph("", SV), Paragraph("", SV)],
+    ], [W4, W4, W4, W4], extra=[
+        ("SPAN", (0, 2), (3, 2)),
+        ("SPAN", (0, 3), (3, 3)),
     ]))
-    elems.append(desc_tbl)
-    elems.append(SP)
+    elems.append(SP1)
 
-    # Valores
-    elems.append(sec("VALORES"))
-    iss_label = "ISSQN Retido (R$):" if retISSQN == "1" else "ISSQN Devido (R$):"
-    val_rows = [
-        ("Valor dos Serviços (R$):",    _fmt_currency(vServ)),
-        ("Base de Cálculo ISSQN (R$):", _fmt_currency(vBC)),
-        ("Alíquota ISSQN:",             _fmt_aliq(pAliq)),
-        (iss_label,                     _fmt_currency(vISSQN)),
-        ("Valor Líquido (R$):",         _fmt_currency(vLiq)),
-    ]
-    val_tbl = Table(
-        [[Paragraph(f"<b>{k}</b>", S_VAL), Paragraph(v, S_BIG)] for k, v in val_rows],
-        colWidths=[W * 0.65, W * 0.35],
-    )
-    val_tbl.setStyle(TableStyle([
-        ("TOPPADDING",    (0, 0), (-1, -1), 5),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
-        ("LEFTPADDING",   (0, 0), (-1, -1), 8),
-        ("RIGHTPADDING",  (0, 0), (-1, -1), 8),
-        ("ALIGN",         (1, 0), (1, -1), "RIGHT"),
-        ("LINEBELOW",     (0, 0), (-1, -2), 0.3, SEP),
-        ("BACKGROUND",    (0, -1), (-1, -1), LBLUE),
-        ("FONTSIZE",      (1, -1), (1, -1), 12),
-        ("FONTNAME",      (1, -1), (1, -1), "Helvetica-Bold"),
-        ("BOX",           (0, 0), (-1, -1), 0.5, BORD),
+    # ── TRIBUTAÇÃO MUNICIPAL ─────────────────────────────────────────────────
+    elems.append(sec("TRIBUTAÇÃO MUNICIPAL"))
+    elems.append(mktbl([
+        [Paragraph("Tributação do ISSQN", SL),
+         Paragraph("Operação Tributável", SL),
+         Paragraph("País Resultado da Prest. Serviço", SL),
+         Paragraph("Município de Incidência do ISSQN", SL)],
+        [Paragraph(ret_label, SV),
+         Paragraph(opTrib, SV),
+         Paragraph(xPaisRes, SV),
+         Paragraph(xMunIncid, SV)],
+        [Paragraph("Regime Especial de Tributação", SL),
+         Paragraph("Tipo de Imunidade", SL),
+         Paragraph("Suspensão da Exigibilidade do ISSQN", SL),
+         Paragraph("Número Processo Suspensão", SL)],
+        [Paragraph(regEspTrib, SV),
+         Paragraph(tpImun, SV),
+         Paragraph("—", SV),
+         Paragraph(nProc, SV)],
+        [Paragraph("Valor do Serviço", SL),
+         Paragraph("Desconto Incondicionado", SL),
+         Paragraph("Total Deduções/Reduções", SL),
+         Paragraph("Cálculo do BM", SL)],
+        [Paragraph(_fmt_currency(vServ) if vServ else "—", SV),
+         Paragraph(_fmt_currency(vDescInc) if vDescInc else "—", SV),
+         Paragraph(_fmt_currency(vDedRed) if vDedRed else "—", SV),
+         Paragraph("—", SV)],
+        [Paragraph("BC ISSQN", SL),
+         Paragraph("Alíquota Aplicada", SL),
+         Paragraph("Retenção do ISSQN", SL),
+         Paragraph("ISSQN Apurado", SL)],
+        [Paragraph(_fmt_currency(vBC) if vBC else "—", SV),
+         Paragraph(_fmt_aliq(pAliq) if pAliq else "—", SV),
+         Paragraph(ret_label, SV),
+         Paragraph(_fmt_currency(vISSQN) if vISSQN else "—", SV)],
+    ], [W4, W4, W4, W4]))
+    elems.append(SP1)
+
+    # ── TRIBUTAÇÃO FEDERAL ───────────────────────────────────────────────────
+    elems.append(sec("TRIBUTAÇÃO FEDERAL"))
+    elems.append(mktbl([
+        [Paragraph("IRRF", SL),
+         Paragraph("Contribuição Previdenciária - Retida", SL),
+         Paragraph("Contribuições Sociais - Retidas", SL),
+         Paragraph("Descrição Contrib. Sociais - Retidas", SL)],
+        [Paragraph(vIRRF, SV),
+         Paragraph(vCP, SV),
+         Paragraph(vCSLL, SV),
+         Paragraph(descCS, SV)],
+        [Paragraph("PIS - Débito Apuração Própria", SL),
+         Paragraph("COFINS - Débito Apuração Própria", SL),
+         Paragraph("", SL), Paragraph("", SL)],
+        [Paragraph(_fmt_currency(vPIS) if vPIS else "—", SV),
+         Paragraph(_fmt_currency(vCOFINS) if vCOFINS else "—", SV),
+         Paragraph("", SV), Paragraph("", SV)],
+    ], [W4, W4, W4, W4]))
+    elems.append(SP1)
+
+    # ── VALOR TOTAL DA NFS-E ─────────────────────────────────────────────────
+    elems.append(sec("VALOR TOTAL DA NFS-E"))
+    elems.append(mktbl([
+        [Paragraph("Valor do Serviço", SL),
+         Paragraph("Desconto Condicionado", SL),
+         Paragraph("Desconto Incondicionado", SL),
+         Paragraph("ISSQN Retido", SL)],
+        [Paragraph(_fmt_currency(vServ) if vServ else "—", SV),
+         Paragraph(_fmt_currency(vDescCond) if vDescCond else "—", SV),
+         Paragraph(_fmt_currency(vDescInc) if vDescInc else "—", SV),
+         Paragraph(_fmt_currency(vISSQNRet) if vISSQNRet else "—", SV)],
+        [Paragraph("Total das Retenções Federais", SL),
+         Paragraph("PIS/COFINS - Débito Apur. Própria", SL),
+         Paragraph("", SL),
+         Paragraph("Valor Líquido da NFS-e", SL)],
+        [Paragraph(_fmt_currency(vRetFed) if vRetFed else "—", SV),
+         Paragraph(_fmt_currency(vPisCofins) if vPisCofins else "—", SV),
+         Paragraph("", SV),
+         Paragraph(_fmt_currency(vLiq) if vLiq else "—",
+                   S("liq", fontName="Helvetica-Bold", fontSize=9, leading=12))],
+    ], [W4, W4, W4, W4], extra=[
+        ("BACKGROUND", (3, 2), (3, 3), LBLUE),
     ]))
-    elems.append(val_tbl)
-    elems.append(Spacer(1, 5 * mm))
+    elems.append(SP1)
 
+    # ── TOTAIS APROXIMADOS DOS TRIBUTOS ──────────────────────────────────────
+    elems.append(sec("TOTAIS APROXIMADOS DOS TRIBUTOS"))
+    W3t = W / 3
+    elems.append(mktbl([
+        [Paragraph("Federais", SL),
+         Paragraph("Estaduais", SL),
+         Paragraph("Municipais", SL)],
+        [Paragraph("R$ 0,00", SV),
+         Paragraph("R$ 0,00", SV),
+         Paragraph("R$ 0,00", SV)],
+    ], [W3t, W3t, W3t]))
+    elems.append(SP1)
+
+    # ── INFORMAÇÕES COMPLEMENTARES ───────────────────────────────────────────
+    if cNBS:
+        elems.append(sec("INFORMAÇÕES COMPLEMENTARES"))
+        elems.append(mktbl([
+            [Paragraph("NBS", SL)],
+            [Paragraph(cNBS, SV)],
+        ], [W]))
+
+    elems.append(Spacer(1, 3 * mm))
     elems.append(Paragraph(
         "Documento gerado a partir do XML da NFS-e Nacional — adn.nfse.gov.br",
-        S_FOOT,
+        SFT,
     ))
 
     doc.build(elems)
