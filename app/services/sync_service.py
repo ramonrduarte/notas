@@ -53,24 +53,27 @@ def run_sync(tipo: str = "all", cancel_flag: threading.Event = None) -> dict:
 
 def run_recovery(tipos: list[str], only_authorized: bool,
                  cancel_flag: threading.Event = None) -> dict:
-    """Reseta NSU para zero dos tipos selecionados e faz sync completo."""
-    cfg, pfx_path, cnpj, tp_amb, cuf, xml_dir = _load_base()
+    """Baixa documentos históricos em pasta separada (xmls_historico/).
+    Continua de onde parou — para reiniciar do zero, resete os NSUs _hist antes de chamar."""
+    cfg, pfx_path, cnpj, tp_amb, cuf, _ = _load_base()
+    hist_dir = config.HIST_DIR
     results = {}
 
     extras = {
-        "nfe_direction": cfg.get("nfe_direction", "ambas"),
-        "cte_role":      cfg.get("cte_role", "tomador"),
-        "nfse_role":     cfg.get("nfse_role", "ambas"),
+        "nfe_direction":   cfg.get("nfe_direction", "ambas"),
+        "cte_role":        cfg.get("cte_role", "tomador"),
+        "nfse_role":       cfg.get("nfse_role", "ambas"),
         "only_authorized": only_authorized,
     }
 
-    for tipo in tipos:
+    for tipo_base in tipos:
+        tipo_hist = f"{tipo_base}_hist"
         if cancel_flag and cancel_flag.is_set():
-            results[tipo] = {"status": "error", "mensagem": "Cancelado pelo usuário."}
+            results[tipo_hist] = {"status": "error", "mensagem": "Cancelado pelo usuário."}
             continue
-        nsu_zero = "0" if tipo == "nfse" else "000000000000000"
-        database.set_ult_nsu(tipo, nsu_zero)
-        results[tipo] = _sync_tipo(tipo, pfx_path, cfg["cert_password"], cnpj, xml_dir, tp_amb, cuf, cancel_flag, **extras)
+        results[tipo_hist] = _sync_tipo(
+            tipo_hist, pfx_path, cfg["cert_password"], cnpj, hist_dir, tp_amb, cuf, cancel_flag, **extras
+        )
 
     return results
 
@@ -84,17 +87,18 @@ def _sync_tipo(tipo: str, pfx_path, password, cnpj, xml_dir, tp_amb, cuf,
     logger.info(f"Iniciando sync {tipo.upper()} a partir de NSU {ult_nsu}")
 
     try:
-        if tipo == "nfe":
+        base = tipo.replace("_hist", "")  # nfe_hist → nfe
+        if base == "nfe":
             new_nsu, total, meta_list = nfe_service.sync_nfe(
                 pfx_path, password, cnpj, ult_nsu, xml_dir, tp_amb, cuf, cancel_flag,
                 direction=nfe_direction, only_authorized=only_authorized,
             )
-        elif tipo == "cte":
+        elif base == "cte":
             new_nsu, total, meta_list = cte_service.sync_cte(
                 pfx_path, password, cnpj, ult_nsu, xml_dir, tp_amb, cuf, cancel_flag,
                 cte_role=cte_role, only_authorized=only_authorized,
             )
-        else:  # nfse
+        else:  # nfse / nfse_hist
             new_nsu, total, meta_list = nfse_service.sync_nfse(
                 pfx_path, password, cnpj, ult_nsu, xml_dir, tp_amb, cancel_flag,
                 nfse_role=nfse_role,

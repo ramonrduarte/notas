@@ -15,8 +15,9 @@ class SyncRequest(BaseModel):
 
 
 class RecoveryRequest(BaseModel):
-    tipos: list[str] = ["nfe", "cte"]
+    tipos: list[str] = ["nfe", "cte"]   # bases: nfe, cte, nfse
     only_authorized: bool = True
+    reset_nsu: bool = False              # se True, zera NSU _hist antes de sincronizar
 
 
 @router.post("/trigger")
@@ -57,9 +58,11 @@ def sync_status():
     sched = sched_module.get_next_run_times()
     logs = database.list_sync_logs(limit=40)
 
-    last_nfe  = next((l for l in logs if l["tipo"] == "nfe"  and l["status"] != "running"), None)
-    last_cte  = next((l for l in logs if l["tipo"] == "cte"  and l["status"] != "running"), None)
-    last_nfse = next((l for l in logs if l["tipo"] == "nfse" and l["status"] != "running"), None)
+    last_nfe      = next((l for l in logs if l["tipo"] == "nfe"      and l["status"] != "running"), None)
+    last_cte      = next((l for l in logs if l["tipo"] == "cte"      and l["status"] != "running"), None)
+    last_nfse     = next((l for l in logs if l["tipo"] == "nfse"     and l["status"] != "running"), None)
+    last_nfe_hist = next((l for l in logs if l["tipo"] == "nfe_hist" and l["status"] != "running"), None)
+    last_cte_hist = next((l for l in logs if l["tipo"] == "cte_hist" and l["status"] != "running"), None)
 
     # Detecta cooldown: 90 min após o último erro 656
     cooldown_until = None
@@ -80,6 +83,8 @@ def sync_status():
         "last_nfe": last_nfe,
         "last_cte": last_cte,
         "last_nfse": last_nfse,
+        "last_nfe_hist": last_nfe_hist,
+        "last_cte_hist": last_cte_hist,
         "next_scheduled": sched.get("next_scheduled"),
         "next_retry": sched.get("next_retry"),
         "cooldown_until": cooldown_until,
@@ -101,6 +106,10 @@ def start_recovery(body: RecoveryRequest):
     def _run():
         _sync_status["running"] = True
         try:
+            if body.reset_nsu:
+                for tipo_base in tipos:
+                    nsu_zero = "0" if tipo_base == "nfse" else "000000000000000"
+                    database.set_ult_nsu(f"{tipo_base}_hist", nsu_zero)
             result = run_recovery(tipos, body.only_authorized, _cancel_flag)
             _sync_status["last_result"] = {"status": "success", "result": result}
         except Exception as e:
@@ -115,9 +124,14 @@ def start_recovery(body: RecoveryRequest):
 
 @router.post("/reset-nsu")
 def reset_nsu(tipo: str = "all"):
-    tipos = ["nfe", "cte", "nfse"] if tipo == "all" else [tipo]
+    if tipo == "all":
+        tipos = ["nfe", "cte", "nfse", "nfe_hist", "cte_hist", "nfse_hist"]
+    elif tipo == "hist":
+        tipos = ["nfe_hist", "cte_hist", "nfse_hist"]
+    else:
+        tipos = [tipo]
     for t in tipos:
-        nsu_zero = "0" if t == "nfse" else "000000000000000"
+        nsu_zero = "0" if "nfse" in t else "000000000000000"
         database.set_ult_nsu(t, nsu_zero)
     return {"ok": True, "resetados": tipos}
 

@@ -417,26 +417,42 @@
     </div>
 
     <div class="form-section">
-      <h3>Armazenamento de Arquivos</h3>
-      <p style="font-size:13px;color:var(--text-muted);margin-bottom:14px;">
-        Os XMLs são salvos dentro do container em <code style="font-size:12px;background:var(--bg);padding:2px 6px;border-radius:4px">/data/xmls/nfe/AAAA/MM/</code>, <code style="font-size:12px;background:var(--bg);padding:2px 6px;border-radius:4px">/data/xmls/cte/AAAA/MM/</code> e <code style="font-size:12px;background:var(--bg);padding:2px 6px;border-radius:4px">/data/xmls/nfse/AAAA/MM/</code>, mapeados para o volume Docker configurado no host. O banco de dados fica em <code style="font-size:12px;background:var(--bg);padding:2px 6px;border-radius:4px">/data/sefaz.db</code>.
-      </p>
-      <div id="storage-info" style="font-size:13px;color:var(--text-muted);margin-bottom:14px;"></div>
-      <div class="flex gap-8">
-        <button class="btn btn-danger btn-sm" id="btn-purge-events" onclick="purgeEvents()">🗑 Limpar Eventos</button>
+      <h3>Gerenciamento de Dados</h3>
+
+      <div style="border:1px solid var(--border);border-radius:6px;padding:16px;margin-bottom:16px">
+        <div style="font-size:13px;font-weight:600;margin-bottom:10px;color:var(--text)">Sincronização Incremental <span style="font-size:11px;font-weight:400;color:var(--text-muted)">(/data/xmls/)</span></div>
+        <div id="storage-sync-info" style="font-size:13px;color:var(--text-muted);margin-bottom:12px">Carregando...</div>
+        <div class="flex gap-8" style="flex-wrap:wrap">
+          <button class="btn btn-danger btn-sm" onclick="purgeData('nfe')">🗑 NF-e</button>
+          <button class="btn btn-danger btn-sm" onclick="purgeData('cte')">🗑 CT-e</button>
+          <button class="btn btn-danger btn-sm" onclick="purgeData('nfse')">🗑 NFS-e</button>
+          <button class="btn btn-danger btn-sm" onclick="purgeData(null,'eventos')">🗑 Somente Eventos</button>
+          <button class="btn btn-danger btn-sm" onclick="purgeData(null,'all')" style="border-color:#ef4444">🗑 Limpar Tudo</button>
+        </div>
       </div>
-      <p style="font-size:12px;color:var(--text-muted);margin-top:8px;">Remove eventos (procEventoNFe, procEventoCTe, etc.) do banco e do disco. Notas autorizadas não são afetadas.</p>
-      <div id="purge-result" class="mt-16" style="display:none"></div>
+
+      <div style="border:1px solid var(--border);border-radius:6px;padding:16px;margin-bottom:16px">
+        <div style="font-size:13px;font-weight:600;margin-bottom:10px;color:var(--text)">Recuperação Histórica <span style="font-size:11px;font-weight:400;color:var(--text-muted)">(/data/xmls_historico/)</span></div>
+        <div id="storage-hist-info" style="font-size:13px;color:var(--text-muted);margin-bottom:12px">Carregando...</div>
+        <div class="flex gap-8" style="flex-wrap:wrap">
+          <button class="btn btn-danger btn-sm" onclick="purgeData('nfe_hist')">🗑 NF-e Hist.</button>
+          <button class="btn btn-danger btn-sm" onclick="purgeData('cte_hist')">🗑 CT-e Hist.</button>
+          <button class="btn btn-danger btn-sm" onclick="purgeData('nfse_hist')">🗑 NFS-e Hist.</button>
+          <button class="btn btn-danger btn-sm" onclick="purgeData('hist')">🗑 Limpar Todo Histórico</button>
+        </div>
+      </div>
+
+      <div id="purge-result" class="mt-8" style="display:none"></div>
     </div>
 
     <div class="form-section">
-      <h3>Zona de Perigo</h3>
-      <p style="font-size:13px;color:var(--text-muted);margin-bottom:14px;">Resetar os NSUs faz com que todos os documentos sejam re-baixados na próxima sincronização (documentos dos últimos 90 dias).</p>
-      <div class="flex gap-8">
-        <button class="btn btn-danger btn-sm" onclick="resetNSU('nfe')">Resetar NSU NF-e</button>
-        <button class="btn btn-danger btn-sm" onclick="resetNSU('cte')">Resetar NSU CT-e</button>
-        <button class="btn btn-danger btn-sm" onclick="resetNSU('nfse')">Resetar NSU NFS-e</button>
-        <button class="btn btn-danger btn-sm" onclick="resetNSU('all')">Resetar Tudo</button>
+      <h3>Zona de Perigo — NSU</h3>
+      <p style="font-size:13px;color:var(--text-muted);margin-bottom:14px;">Resetar NSU faz o sync incremental rebaixar documentos a partir do zero na próxima execução. Não apaga arquivos salvos.</p>
+      <div class="flex gap-8" style="flex-wrap:wrap">
+        <button class="btn btn-danger btn-sm" onclick="resetNSU('nfe')">Reset NSU NF-e</button>
+        <button class="btn btn-danger btn-sm" onclick="resetNSU('cte')">Reset NSU CT-e</button>
+        <button class="btn btn-danger btn-sm" onclick="resetNSU('nfse')">Reset NSU NFS-e</button>
+        <button class="btn btn-danger btn-sm" onclick="resetNSU('all')">Reset Todos</button>
       </div>
     </div>
   </div>
@@ -448,11 +464,18 @@
     <div class="filter-row">
       <div class="filter-group">
         <label>Tipo:</label>
-        <select id="filter-tipo" onchange="filterTable()" style="max-width:120px">
+        <select id="filter-tipo" onchange="filterTable()" style="max-width:160px">
           <option value="">Todos</option>
-          <option value="nfe">NF-e</option>
-          <option value="cte">CT-e</option>
-          <option value="nfse">NFS-e</option>
+          <optgroup label="Sincronização">
+            <option value="nfe">NF-e</option>
+            <option value="cte">CT-e</option>
+            <option value="nfse">NFS-e</option>
+          </optgroup>
+          <optgroup label="Histórico">
+            <option value="nfe_hist">NF-e (histórico)</option>
+            <option value="cte_hist">CT-e (histórico)</option>
+            <option value="nfse_hist">NFS-e (histórico)</option>
+          </optgroup>
         </select>
       </div>
       <div class="filter-group">
@@ -533,12 +556,17 @@
   <div class="page" id="page-recovery">
     <h2>Recuperação Histórica</h2>
 
-    <div class="alert alert-warning" style="margin-bottom:20px">
-      ⚠️ Esta operação reinicia o NSU para zero dos tipos selecionados e baixa <strong>todos os documentos disponíveis no SEFAZ</strong>. Pode demorar bastante (horas) dependendo do volume. Documentos já salvos não serão duplicados. Os filtros de direção configurados em Configurações são aplicados automaticamente.
+    <div class="alert alert-info" style="margin-bottom:20px">
+      📁 Os documentos recuperados são salvos em <strong>/data/xmls_historico/</strong> — pasta completamente separada da sincronização incremental. Você pode continuar de onde parou: o progresso é salvo a cada execução.
     </div>
 
     <div class="form-section">
-      <h3>O que recuperar</h3>
+      <h3>Progresso Atual</h3>
+      <div id="recovery-nsu-status" style="font-size:13px;color:var(--text-muted)">Carregando...</div>
+    </div>
+
+    <div class="form-section">
+      <h3>Configurar Recuperação</h3>
       <div class="form-row">
         <div class="form-group">
           <label>Tipos de documento</label>
@@ -555,17 +583,24 @@
           </div>
         </div>
         <div class="form-group">
-          <label>Filtro de documentos</label>
+          <label>Filtro</label>
           <label style="display:flex;align-items:center;gap:6px;margin-top:10px;color:var(--text)">
             <input type="checkbox" id="rec-only-auth" checked />
-            Somente autorizadas <span class="text-sm">(pula eventos e resumos)</span>
+            Somente autorizadas <span class="text-sm">(mais rápido)</span>
           </label>
         </div>
       </div>
 
-      <div class="flex gap-8 mt-16" style="align-items:center">
-        <button class="btn btn-primary" onclick="startRecovery()" id="btn-recovery">
-          ⟳ Iniciar Recuperação
+      <p style="font-size:12px;color:var(--text-muted);margin-top:4px">
+        Os filtros de direção (emitidas/recebidas, tomador/emitente) configurados em Configurações são aplicados automaticamente.
+      </p>
+
+      <div class="flex gap-8 mt-16" style="align-items:center;flex-wrap:wrap">
+        <button class="btn btn-primary" onclick="startRecovery(false)" id="btn-recovery-continue">
+          ▶ Continuar de onde parou
+        </button>
+        <button class="btn btn-secondary" onclick="startRecovery(true)" id="btn-recovery-restart">
+          ↺ Reiniciar do zero
         </button>
         <button class="btn btn-danger btn-sm" onclick="cancelSync()" id="btn-recovery-cancel" style="display:none">
           ✕ Cancelar
@@ -577,7 +612,7 @@
     <div id="recovery-result" class="mt-16" style="display:none"></div>
 
     <div class="form-section mt-16" id="recovery-progress-section" style="display:none">
-      <h3>Progresso</h3>
+      <h3>Andamento</h3>
       <div id="recovery-progress-content" style="font-size:13px"></div>
     </div>
   </div>
@@ -609,6 +644,7 @@ function showPage(name) {
   if (name === 'files') loadFiles();
   if (name === 'logs') loadLogs();
   if (name === 'config') loadConfig();
+  if (name === 'recovery') loadRecoveryStatus();
 }
 
 document.querySelectorAll('.nav-item').forEach(el => {
@@ -894,8 +930,10 @@ async function loadConfig() {
       api('/api/files/storage-info').catch(() => null),
     ]);
     if (storage) {
-      const el = document.getElementById('storage-info');
-      if (el) el.textContent = `${storage.total_xml_files} arquivo(s) XML ocupando ${storage.total_size_mb} MB.`;
+      const syncEl = document.getElementById('storage-sync-info');
+      if (syncEl) syncEl.textContent = `${storage.sync_xml_files} arquivo(s) XML · ${storage.sync_size_mb} MB`;
+      const histEl = document.getElementById('storage-hist-info');
+      if (histEl) histEl.textContent = `${storage.hist_xml_files} arquivo(s) XML · ${storage.hist_size_mb} MB`;
     }
     document.getElementById('cfg-cnpj').value = cfg.cnpj || '';
     document.getElementById('cfg-ambiente').value = cfg.ambiente || '1';
@@ -1089,18 +1127,33 @@ function clearFilters() {
   filterTable();
 }
 
-async function purgeEvents() {
-  if (!confirm('Remover todos os eventos (NF-e e CT-e) do banco de dados e disco?\n\nIsso não afeta notas autorizadas. Esta ação não pode ser desfeita.')) return;
-  const btn = document.getElementById('btn-purge-events');
-  btn.disabled = true;
+const _purgeLabels = {
+  'nfe': 'NF-e (sincronização)',
+  'cte': 'CT-e (sincronização)',
+  'nfse': 'NFS-e (sincronização)',
+  'nfe_hist': 'NF-e Histórico',
+  'cte_hist': 'CT-e Histórico',
+  'nfse_hist': 'NFS-e Histórico',
+  'hist': 'todo o histórico',
+  'null_all': 'TUDO (sincronização + histórico)',
+  'null_eventos': 'todos os eventos',
+};
+
+async function purgeData(tipo, category = 'all') {
+  const label = tipo ? (_purgeLabels[tipo] || tipo) : (category === 'eventos' ? _purgeLabels['null_eventos'] : _purgeLabels['null_all']);
+  if (!confirm(`Apagar ${label} do banco e do disco?\n\nEsta ação não pode ser desfeita.`)) return;
+
+  const params = new URLSearchParams();
+  if (tipo) params.set('tipo', tipo);
+  params.set('category', category);
+
   try {
-    const r = await api('/api/files/purge-events', { method: 'DELETE' });
+    const r = await api(`/api/files/purge?${params}`, { method: 'DELETE' });
     showPurgeResult(`✓ Removidos ${r.removidos_db} registro(s) do banco e ${r.removidos_disco} arquivo(s) do disco.`, 'success');
+    loadConfig();
     loadDashboard();
   } catch(e) {
     showPurgeResult('Erro: ' + e.message, 'error');
-  } finally {
-    btn.disabled = false;
   }
 }
 
@@ -1109,6 +1162,15 @@ function showPurgeResult(msg, type) {
   el.style.display = 'block';
   el.innerHTML = `<div class="alert alert-${type === 'error' ? 'error' : 'success'}">${escHtml(msg)}</div>`;
   setTimeout(() => el.style.display = 'none', 5000);
+}
+
+const _tipoBase = t => t.replace('_hist', '');
+const _tipoLabel = { nfe:'NF-e', cte:'CT-e', nfse:'NFS-e', nfe_hist:'NF-e H', cte_hist:'CT-e H', nfse_hist:'NFS-e H' };
+function tipoBadge(tipo) {
+  const base = _tipoBase(tipo);
+  const isHist = tipo.endsWith('_hist');
+  const label = _tipoLabel[tipo] || tipo.toUpperCase();
+  return `<span class="badge badge-${base}" title="${tipo}" style="${isHist ? 'opacity:.65' : ''}">${label}</span>`;
 }
 
 function schemaLabel(schema) {
@@ -1129,13 +1191,11 @@ function renderFilesTable(docs) {
     return;
   }
   tbody.innerHTML = docs.map(d => {
-    const parts = (d.file_path || '').replace(/\\/g,'/').split('/');
-    const downloadPath = parts.length >= 5
-      ? `/api/files/download/${parts[parts.length-4]}/${parts[parts.length-3]}/${parts[parts.length-2]}/${parts[parts.length-1]}`
-      : '#';
+    const fp = (d.file_path || '').replace(/\\/g, '/');
+    const downloadPath = fp ? `/api/files/download-by-path?path=${encodeURIComponent(fp)}` : '#';
     const chaveShort = (d.chave || d.nsu || '');
     return `<tr>
-      <td><span class="badge badge-${d.tipo}">${d.tipo.toUpperCase()}</span></td>
+      <td>${tipoBadge(d.tipo)}</td>
       <td style="font-family:monospace;font-size:11px" title="${escHtml(chaveShort)}">${escHtml(chaveShort.length > 22 ? chaveShort.slice(0,10)+'…'+chaveShort.slice(-10) : chaveShort)}</td>
       <td>${schemaLabel(d.schema)}</td>
       <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(d.emitente)}">${escHtml(d.emitente)}</td>
@@ -1166,21 +1226,50 @@ function exportZip() {
 // ─── Recovery ─────────────────────────────────────────────────────
 let _recoveryPoll = null;
 
-async function startRecovery() {
+async function loadRecoveryStatus() {
+  try {
+    const nsu = await api('/api/files/nsu');
+    const counts = await api('/api/files/count');
+    const el = document.getElementById('recovery-nsu-status');
+    if (!el) return;
+    const rows = [
+      { tipo: 'nfe_hist',  label: 'NF-e',  badge: 'nfe'  },
+      { tipo: 'cte_hist',  label: 'CT-e',  badge: 'cte'  },
+      { tipo: 'nfse_hist', label: 'NFS-e', badge: 'nfse' },
+    ].map(({ tipo, label, badge }) => {
+      const n = nsu[tipo] || '0';
+      const c = counts[tipo] || 0;
+      const pct = n === '0' || n === '000000000000000' ? 'Não iniciado' : `NSU ${n} — ${c} doc(s) salvos`;
+      return `<div class="status-row">
+        <span class="badge badge-${badge}" style="opacity:.65">${label} H</span>
+        <span style="color:${c > 0 ? 'var(--success)' : 'var(--text-muted)'}">${c > 0 ? '✓' : '○'}</span>
+        <span>${pct}</span>
+      </div>`;
+    }).join('');
+    el.innerHTML = rows || '<span style="color:var(--text-muted)">Nenhuma recuperação iniciada ainda.</span>';
+  } catch(e) { /* ignore */ }
+}
+
+async function startRecovery(resetNsu = false) {
   const tipos = [];
   if (document.getElementById('rec-nfe')?.checked) tipos.push('nfe');
   if (document.getElementById('rec-cte')?.checked) tipos.push('cte');
   if (document.getElementById('rec-nfse')?.checked) tipos.push('nfse');
   if (!tipos.length) { alert('Selecione ao menos um tipo.'); return; }
 
-  if (!confirm(`Iniciar recuperação histórica para: ${tipos.map(t => t.toUpperCase()).join(', ')}?\n\nO NSU será zerado e todos os documentos disponíveis serão baixados. Isso pode demorar bastante.`)) return;
+  const confirmMsg = resetNsu
+    ? `Reiniciar recuperação do ZERO para: ${tipos.map(t => t.toUpperCase()).join(', ')}?\n\nO progresso anterior será perdido e todos os documentos serão rebaixados. Isso pode demorar horas.`
+    : `Continuar recuperação para: ${tipos.map(t => t.toUpperCase()).join(', ')}?\n\nO download continuará de onde parou.`;
+  if (!confirm(confirmMsg)) return;
 
   const only_authorized = document.getElementById('rec-only-auth')?.checked ?? true;
 
-  const btn = document.getElementById('btn-recovery');
+  const btnContinue = document.getElementById('btn-recovery-continue');
+  const btnRestart  = document.getElementById('btn-recovery-restart');
   const cancel = document.getElementById('btn-recovery-cancel');
   const statusText = document.getElementById('recovery-status-text');
-  btn.disabled = true;
+  if (btnContinue) btnContinue.disabled = true;
+  if (btnRestart)  btnRestart.disabled  = true;
   cancel.style.display = 'inline-flex';
   statusText.textContent = 'Iniciando...';
 
@@ -1191,7 +1280,7 @@ async function startRecovery() {
     await api('/api/sync/recovery', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ tipos, only_authorized }),
+      body: JSON.stringify({ tipos, only_authorized, reset_nsu: resetNsu }),
     });
     showSyncBar(true);
     document.getElementById('recovery-progress-section').style.display = 'block';
@@ -1199,7 +1288,8 @@ async function startRecovery() {
   } catch(e) {
     result.style.display = 'block';
     result.innerHTML = `<div class="alert alert-error">❌ ${escHtml(e.message)}</div>`;
-    btn.disabled = false;
+    if (btnContinue) btnContinue.disabled = false;
+    if (btnRestart)  btnRestart.disabled  = false;
     cancel.style.display = 'none';
     statusText.textContent = '';
   }
@@ -1225,20 +1315,24 @@ function pollRecovery() {
         cancel.style.display = 'none';
         statusText.textContent = '';
 
+        document.getElementById('btn-recovery-continue').disabled = false;
+        document.getElementById('btn-recovery-restart').disabled  = false;
+
         const result = document.getElementById('recovery-result');
         result.style.display = 'block';
         if (s.last_result?.status === 'success') {
           const r = s.last_result.result;
           const lines = Object.entries(r || {}).map(([k,v]) => {
             if (v.status === 'error')
-              return `<span style="color:#fca5a5">❌ <strong>${k.toUpperCase()}</strong>: ${escHtml(v.mensagem)}</span>`;
-            return `<span style="color:#86efac">✓ <strong>${k.toUpperCase()}</strong>: ${v.documentos ?? 0} doc(s) baixado(s) — NSU final: ${v.nsu_final ?? '—'}</span>`;
+              return `<span style="color:#fca5a5">❌ <strong>${_tipoLabel[k]||k}</strong>: ${escHtml(v.mensagem)}</span>`;
+            return `<span style="color:#86efac">✓ <strong>${_tipoLabel[k]||k} (histórico)</strong>: ${v.documentos ?? 0} doc(s) baixado(s) — NSU: ${v.nsu_final ?? '—'}</span>`;
           }).join('<br>');
           result.innerHTML = `<div class="alert alert-success">Recuperação concluída:<br>${lines}</div>`;
           if (prog) prog.innerHTML = lines;
         } else if (s.last_result?.status === 'error') {
           result.innerHTML = `<div class="alert alert-error">❌ ${escHtml(s.last_result.mensagem)}</div>`;
         }
+        loadRecoveryStatus();
         loadDashboard();
       }
     } catch(e) { /* ignore */ }
@@ -1257,7 +1351,7 @@ async function loadLogs() {
     tbody.innerHTML = logs.map(l => {
       const badge = l.status === 'success' ? 'badge-success' : l.status === 'running' ? 'badge-running' : l.status === 'skipped' ? 'badge-skipped' : 'badge-error';
       return `<tr>
-        <td><span class="badge badge-${l.tipo}">${(l.tipo||'').toUpperCase()}</span></td>
+        <td>${tipoBadge(l.tipo || '')}</td>
         <td>${fmt(l.iniciado_em)}</td>
         <td>${fmt(l.finalizado_em)}</td>
         <td><span class="badge ${badge}">${l.status}</span></td>

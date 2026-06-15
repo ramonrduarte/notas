@@ -48,6 +48,9 @@ def init_db():
         conn.execute("INSERT OR IGNORE INTO nsu_state (tipo, ult_nsu) VALUES ('nfe', '000000000000000')")
         conn.execute("INSERT OR IGNORE INTO nsu_state (tipo, ult_nsu) VALUES ('cte', '000000000000000')")
         conn.execute("INSERT OR IGNORE INTO nsu_state (tipo, ult_nsu) VALUES ('nfse', '0')")
+        conn.execute("INSERT OR IGNORE INTO nsu_state (tipo, ult_nsu) VALUES ('nfe_hist', '000000000000000')")
+        conn.execute("INSERT OR IGNORE INTO nsu_state (tipo, ult_nsu) VALUES ('cte_hist', '000000000000000')")
+        conn.execute("INSERT OR IGNORE INTO nsu_state (tipo, ult_nsu) VALUES ('nfse_hist', '0')")
 
 
 def get_ult_nsu(tipo: str) -> str:
