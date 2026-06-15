@@ -66,6 +66,19 @@ def _parse_response(xml_text: str) -> tuple[str, str, str, str, list]:
     return c_stat, x_motivo, ult_nsu, max_nsu, docs
 
 
+def _extract_nfe_cnpjs(xml_bytes: bytes) -> tuple[str, str]:
+    """Retorna (emit_cnpj, dest_cnpj) para filtragem por direção."""
+    try:
+        root = ET.fromstring(xml_bytes)
+        ns = NS_NFE
+        emit_cnpj = root.findtext(f".//{{{ns}}}emit/{{{ns}}}CNPJ") or ""
+        dest_cnpj = (root.findtext(f".//{{{ns}}}dest/{{{ns}}}CNPJ") or
+                     root.findtext(f".//{{{ns}}}dest/{{{ns}}}CPF") or "")
+        return emit_cnpj, dest_cnpj
+    except Exception:
+        return "", ""
+
+
 def _extract_nfe_meta(xml_bytes: bytes) -> dict:
     """Extract key metadata from procNFe or resNFe XML."""
     try:
@@ -105,7 +118,8 @@ def _extract_nfe_meta(xml_bytes: bytes) -> dict:
 
 def sync_nfe(pfx_path: Path, password: str, cnpj: str, ult_nsu: str,
              xml_dir: Path, tp_amb: str = "1", cuf: str = "43",
-             cancel_flag=None) -> tuple[str, int, list]:
+             cancel_flag=None, direction: str = "ambas",
+             only_authorized: bool = False) -> tuple[str, int, list]:
     """
     Download all NF-e since ult_nsu.
     Returns (new_ult_nsu, total_docs, saved_docs_metadata).
@@ -154,6 +168,18 @@ def sync_nfe(pfx_path: Path, password: str, cnpj: str, ult_nsu: str,
                 raise RuntimeError(f"NF-e DistDFe erro: {c_stat} - {x_motivo}")
 
             for nsu, schema, xml_bytes in docs:
+                # Filtro: somente autorizadas (procNFe)
+                if only_authorized and not schema.startswith("procNFe"):
+                    continue
+
+                # Filtro de direção (emitidas/recebidas) — só aplica em procNFe
+                if direction != "ambas" and schema.startswith("procNFe"):
+                    emit_cnpj, dest_cnpj = _extract_nfe_cnpjs(xml_bytes)
+                    if direction == "emitidas" and emit_cnpj != cnpj:
+                        continue
+                    if direction == "recebidas" and dest_cnpj != cnpj:
+                        continue
+
                 meta = _extract_nfe_meta(xml_bytes)
                 chave = meta["chave"] or nsu
 

@@ -201,6 +201,9 @@
   <div class="nav-item" data-page="logs">
     <span class="nav-icon">📋</span> Histórico
   </div>
+  <div class="nav-item" data-page="recovery">
+    <span class="nav-icon">🗄</span> Recuperação
+  </div>
 </nav>
 
 <main class="main">
@@ -366,6 +369,32 @@
           </div>
         </div>
       </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>NF-e — direção</label>
+          <select id="cfg-nfe-direction">
+            <option value="ambas">Emitidas e recebidas</option>
+            <option value="emitidas">Somente emitidas</option>
+            <option value="recebidas">Somente recebidas</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>CT-e — participação</label>
+          <select id="cfg-cte-role">
+            <option value="tomador">Somente tomador</option>
+            <option value="emitente">Somente emitente</option>
+            <option value="ambas">Tomador e emitente</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>NFS-e — participação</label>
+          <select id="cfg-nfse-role">
+            <option value="ambas">Tomada e emitida</option>
+            <option value="tomadora">Somente tomada</option>
+            <option value="emitida">Somente emitida</option>
+          </select>
+        </div>
+      </div>
     </div>
 
     <div class="form-section">
@@ -459,6 +488,7 @@
       </div>
       <button class="btn btn-secondary btn-sm" onclick="clearFilters()">✕ Limpar filtros</button>
       <button class="btn btn-secondary btn-sm" onclick="loadFiles()">↺ Atualizar</button>
+      <button class="btn btn-secondary btn-sm" onclick="exportZip()" id="btn-export-zip">⬇ Exportar ZIP</button>
       <span class="text-sm" id="files-count" style="margin-left:8px"></span>
     </div>
 
@@ -499,6 +529,59 @@
     </div>
   </div>
 
+  <!-- RECOVERY -->
+  <div class="page" id="page-recovery">
+    <h2>Recuperação Histórica</h2>
+
+    <div class="alert alert-warning" style="margin-bottom:20px">
+      ⚠️ Esta operação reinicia o NSU para zero dos tipos selecionados e baixa <strong>todos os documentos disponíveis no SEFAZ</strong>. Pode demorar bastante (horas) dependendo do volume. Documentos já salvos não serão duplicados. Os filtros de direção configurados em Configurações são aplicados automaticamente.
+    </div>
+
+    <div class="form-section">
+      <h3>O que recuperar</h3>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Tipos de documento</label>
+          <div class="flex gap-12 items-center" style="margin-top:8px">
+            <label style="display:flex;align-items:center;gap:6px;color:var(--text)">
+              <input type="checkbox" id="rec-nfe" checked /> <span class="badge badge-nfe">NF-e</span>
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;color:var(--text)">
+              <input type="checkbox" id="rec-cte" checked /> <span class="badge badge-cte">CT-e</span>
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;color:var(--text)">
+              <input type="checkbox" id="rec-nfse" /> <span class="badge badge-nfse">NFS-e</span>
+            </label>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Filtro de documentos</label>
+          <label style="display:flex;align-items:center;gap:6px;margin-top:10px;color:var(--text)">
+            <input type="checkbox" id="rec-only-auth" checked />
+            Somente autorizadas <span class="text-sm">(pula eventos e resumos)</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="flex gap-8 mt-16" style="align-items:center">
+        <button class="btn btn-primary" onclick="startRecovery()" id="btn-recovery">
+          ⟳ Iniciar Recuperação
+        </button>
+        <button class="btn btn-danger btn-sm" onclick="cancelSync()" id="btn-recovery-cancel" style="display:none">
+          ✕ Cancelar
+        </button>
+        <span class="text-sm" id="recovery-status-text"></span>
+      </div>
+    </div>
+
+    <div id="recovery-result" class="mt-16" style="display:none"></div>
+
+    <div class="form-section mt-16" id="recovery-progress-section" style="display:none">
+      <h3>Progresso</h3>
+      <div id="recovery-progress-content" style="font-size:13px"></div>
+    </div>
+  </div>
+
 </main>
 
 <!-- SYNC STATUS BAR -->
@@ -514,6 +597,10 @@ function showPage(name) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById('page-' + name).classList.add('active');
   document.querySelector(`[data-page="${name}"]`).classList.add('active');
+  if (name !== 'recovery' && _recoveryPoll) {
+    clearInterval(_recoveryPoll);
+    _recoveryPoll = null;
+  }
   if (name !== 'dashboard' && _statusRefreshTimer) {
     clearInterval(_statusRefreshTimer);
     _statusRefreshTimer = null;
@@ -818,6 +905,9 @@ async function loadConfig() {
     document.getElementById('cfg-sync-nfe').checked  = cfg.sync_nfe  !== false;
     document.getElementById('cfg-sync-cte').checked  = cfg.sync_cte  !== false;
     document.getElementById('cfg-sync-nfse').checked = cfg.sync_nfse !== false;
+    document.getElementById('cfg-nfe-direction').value = cfg.nfe_direction || 'ambas';
+    document.getElementById('cfg-cte-role').value      = cfg.cte_role      || 'tomador';
+    document.getElementById('cfg-nfse-role').value     = cfg.nfse_role     || 'ambas';
 
     const certStatus = document.getElementById('cert-status');
     certStatus.style.display = 'block';
@@ -868,9 +958,12 @@ async function uploadCert() {
         schedule_minute: cfg.schedule_minute,
         ambiente: cfg.ambiente,
         uf_code: cfg.uf_code,
-        sync_nfe: cfg.sync_nfe,
-        sync_cte: cfg.sync_cte,
-        sync_nfse: cfg.sync_nfse,
+        sync_nfe:      cfg.sync_nfe,
+        sync_cte:      cfg.sync_cte,
+        sync_nfse:     cfg.sync_nfse,
+        nfe_direction: cfg.nfe_direction,
+        cte_role:      cfg.cte_role,
+        nfse_role:     cfg.nfse_role,
       }),
     });
   }
@@ -895,9 +988,12 @@ async function saveConfig() {
     schedule_minute: parseInt(document.getElementById('cfg-minute').value),
     ambiente: document.getElementById('cfg-ambiente').value,
     uf_code: document.getElementById('cfg-uf').value,
-    sync_nfe:  document.getElementById('cfg-sync-nfe').checked,
-    sync_cte:  document.getElementById('cfg-sync-cte').checked,
-    sync_nfse: document.getElementById('cfg-sync-nfse').checked,
+    sync_nfe:       document.getElementById('cfg-sync-nfe').checked,
+    sync_cte:       document.getElementById('cfg-sync-cte').checked,
+    sync_nfse:      document.getElementById('cfg-sync-nfse').checked,
+    nfe_direction:  document.getElementById('cfg-nfe-direction').value,
+    cte_role:       document.getElementById('cfg-cte-role').value,
+    nfse_role:      document.getElementById('cfg-nfse-role').value,
   };
   try {
     await api('/api/config', {
@@ -1049,6 +1145,104 @@ function renderFilesTable(docs) {
       <td><a href="${downloadPath}" class="btn btn-secondary btn-sm" title="Baixar XML">⬇</a></td>
     </tr>`;
   }).join('');
+}
+
+// ─── Export ZIP ───────────────────────────────────────────────────
+function exportZip() {
+  const tipo   = document.getElementById('filter-tipo')?.value || '';
+  const schema = document.getElementById('filter-schema')?.value || 'autorizadas';
+  const params = new URLSearchParams();
+  if (tipo) params.set('tipo', tipo);
+  params.set('schema_filter', schema === 'autorizadas' ? 'autorizadas' : 'todos');
+  const btn = document.getElementById('btn-export-zip');
+  btn.disabled = true;
+  btn.textContent = '⬇ Gerando ZIP...';
+  const link = document.createElement('a');
+  link.href = `/api/files/export-zip?${params}`;
+  link.click();
+  setTimeout(() => { btn.disabled = false; btn.textContent = '⬇ Exportar ZIP'; }, 3000);
+}
+
+// ─── Recovery ─────────────────────────────────────────────────────
+let _recoveryPoll = null;
+
+async function startRecovery() {
+  const tipos = [];
+  if (document.getElementById('rec-nfe')?.checked) tipos.push('nfe');
+  if (document.getElementById('rec-cte')?.checked) tipos.push('cte');
+  if (document.getElementById('rec-nfse')?.checked) tipos.push('nfse');
+  if (!tipos.length) { alert('Selecione ao menos um tipo.'); return; }
+
+  if (!confirm(`Iniciar recuperação histórica para: ${tipos.map(t => t.toUpperCase()).join(', ')}?\n\nO NSU será zerado e todos os documentos disponíveis serão baixados. Isso pode demorar bastante.`)) return;
+
+  const only_authorized = document.getElementById('rec-only-auth')?.checked ?? true;
+
+  const btn = document.getElementById('btn-recovery');
+  const cancel = document.getElementById('btn-recovery-cancel');
+  const statusText = document.getElementById('recovery-status-text');
+  btn.disabled = true;
+  cancel.style.display = 'inline-flex';
+  statusText.textContent = 'Iniciando...';
+
+  const result = document.getElementById('recovery-result');
+  result.style.display = 'none';
+
+  try {
+    await api('/api/sync/recovery', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ tipos, only_authorized }),
+    });
+    showSyncBar(true);
+    document.getElementById('recovery-progress-section').style.display = 'block';
+    pollRecovery();
+  } catch(e) {
+    result.style.display = 'block';
+    result.innerHTML = `<div class="alert alert-error">❌ ${escHtml(e.message)}</div>`;
+    btn.disabled = false;
+    cancel.style.display = 'none';
+    statusText.textContent = '';
+  }
+}
+
+function pollRecovery() {
+  if (_recoveryPoll) clearInterval(_recoveryPoll);
+  _recoveryPoll = setInterval(async () => {
+    try {
+      const s = await api('/api/sync/status');
+      const prog = document.getElementById('recovery-progress-content');
+      const statusText = document.getElementById('recovery-status-text');
+
+      if (s.running) {
+        statusText.textContent = 'Sincronizando...';
+        if (prog) prog.innerHTML = '<span class="spin">⟳</span> Baixando documentos em segundo plano...';
+      } else {
+        clearInterval(_recoveryPoll);
+        showSyncBar(false);
+        const btn = document.getElementById('btn-recovery');
+        const cancel = document.getElementById('btn-recovery-cancel');
+        btn.disabled = false;
+        cancel.style.display = 'none';
+        statusText.textContent = '';
+
+        const result = document.getElementById('recovery-result');
+        result.style.display = 'block';
+        if (s.last_result?.status === 'success') {
+          const r = s.last_result.result;
+          const lines = Object.entries(r || {}).map(([k,v]) => {
+            if (v.status === 'error')
+              return `<span style="color:#fca5a5">❌ <strong>${k.toUpperCase()}</strong>: ${escHtml(v.mensagem)}</span>`;
+            return `<span style="color:#86efac">✓ <strong>${k.toUpperCase()}</strong>: ${v.documentos ?? 0} doc(s) baixado(s) — NSU final: ${v.nsu_final ?? '—'}</span>`;
+          }).join('<br>');
+          result.innerHTML = `<div class="alert alert-success">Recuperação concluída:<br>${lines}</div>`;
+          if (prog) prog.innerHTML = lines;
+        } else if (s.last_result?.status === 'error') {
+          result.innerHTML = `<div class="alert alert-error">❌ ${escHtml(s.last_result.mensagem)}</div>`;
+        }
+        loadDashboard();
+      }
+    } catch(e) { /* ignore */ }
+  }, 3000);
 }
 
 // ─── Logs ─────────────────────────────────────────────────────────

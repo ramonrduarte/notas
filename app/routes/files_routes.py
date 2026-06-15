@@ -1,6 +1,8 @@
+import io
+import zipfile
 from pathlib import Path
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from app import config, database
 
 router = APIRouter(prefix="/api/files", tags=["files"])
@@ -40,6 +42,38 @@ def download_file(tipo: str, year: str, month: str, filename: str):
         path=str(file_path),
         media_type="application/xml",
         filename=filename,
+    )
+
+
+@router.get("/export-zip")
+def export_zip(tipo: str = None, schema_filter: str = "autorizadas"):
+    """Exporta XMLs selecionados como arquivo ZIP."""
+    docs = database.list_documents(tipo=tipo, limit=50000)
+
+    if schema_filter == "autorizadas":
+        docs = [d for d in docs if (
+            (d.get("schema") or "").startswith("procNFe") or
+            (d.get("schema") or "").startswith("procCTe") or
+            d.get("schema") == "NFSE"
+        )]
+
+    buf = io.BytesIO()
+    count = 0
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for doc in docs:
+            fp = doc.get("file_path")
+            if fp:
+                full = config.DATA_DIR / fp
+                if full.exists():
+                    zf.write(full, fp)
+                    count += 1
+    buf.seek(0)
+
+    filename = f"xmls_{tipo or 'todos'}_{schema_filter}.zip"
+    return StreamingResponse(
+        iter([buf.read()]),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 

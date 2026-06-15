@@ -31,6 +31,18 @@ def _decode_xml(xml_b64: str) -> bytes | None:
         return None
 
 
+def _extract_nfse_cnpjs(xml_bytes: bytes) -> tuple[str, str]:
+    """Retorna (prest_cnpj, toma_cnpj) para filtragem por papel."""
+    try:
+        root = ET.fromstring(xml_bytes)
+        ns = NS_NFSE
+        prest_cnpj = root.findtext(f".//{{{ns}}}prest/{{{ns}}}CNPJ") or ""
+        toma_cnpj  = root.findtext(f".//{{{ns}}}toma/{{{ns}}}CNPJ") or ""
+        return prest_cnpj, toma_cnpj
+    except Exception:
+        return "", ""
+
+
 def _extract_nfse_meta(xml_bytes: bytes) -> dict:
     """Extrai metadados do XML NFS-e Nacional."""
     empty = {"chave": "", "emitente": "", "destinatario": "", "valor": "", "data_emissao": ""}
@@ -75,7 +87,7 @@ def _extract_nfse_meta(xml_bytes: bytes) -> dict:
 
 def sync_nfse(pfx_path: Path, password: str, cnpj: str, ult_nsu: str,
               xml_dir: Path, tp_amb: str = "1",
-              cancel_flag=None) -> tuple[str, int, list]:
+              cancel_flag=None, nfse_role: str = "ambas") -> tuple[str, int, list]:
     """
     Baixa NFS-e do ADN Contribuinte (NFS-e Nacional - Receita Federal).
     Retorna (new_ult_nsu, total_docs, saved_docs_metadata).
@@ -135,6 +147,16 @@ def sync_nfse(pfx_path: Path, password: str, cnpj: str, ult_nsu: str,
                 if not xml_bytes:
                     logger.warning(f"NFS-e NSU {doc_nsu}: falha ao decodificar XML")
                     continue
+
+                # Filtro de papel (tomadora / emitida / ambas)
+                if nfse_role != "ambas":
+                    prest_cnpj, toma_cnpj = _extract_nfse_cnpjs(xml_bytes)
+                    if nfse_role == "tomadora" and toma_cnpj and toma_cnpj != cnpj:
+                        logger.debug(f"NFS-e NSU {doc_nsu}: empresa não é tomador, ignorando.")
+                        continue
+                    if nfse_role == "emitida" and prest_cnpj and prest_cnpj != cnpj:
+                        logger.debug(f"NFS-e NSU {doc_nsu}: empresa não é prestador, ignorando.")
+                        continue
 
                 chave = doc.get("ChaveAcesso") or ""
                 meta  = _extract_nfse_meta(xml_bytes)

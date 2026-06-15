@@ -18,6 +18,9 @@ class ConfigUpdate(BaseModel):
     sync_nfe: bool = True
     sync_cte: bool = True
     sync_nfse: bool = True
+    nfe_direction: str = "ambas"   # "emitidas" | "recebidas" | "ambas"
+    cte_role: str = "tomador"      # "tomador" | "emitente" | "ambas"
+    nfse_role: str = "ambas"       # "tomadora" | "emitida" | "ambas"
 
 
 @router.get("")
@@ -43,6 +46,9 @@ def update_config(body: ConfigUpdate):
     cfg["sync_nfe"] = body.sync_nfe
     cfg["sync_cte"] = body.sync_cte
     cfg["sync_nfse"] = body.sync_nfse
+    cfg["nfe_direction"] = body.nfe_direction
+    cfg["cte_role"]      = body.cte_role
+    cfg["nfse_role"]     = body.nfse_role
     config.save_config(cfg)
 
     sched.update_schedule(body.schedule_hour, body.schedule_minute)

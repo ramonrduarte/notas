@@ -31,6 +31,9 @@ def load_config() -> dict:
         "sync_nfe": True,
         "sync_cte": True,
         "sync_nfse": True,
+        "nfe_direction": "ambas",
+        "cte_role": "tomador",
+        "nfse_role": "ambas",
     }
 
 

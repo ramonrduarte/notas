@@ -2,7 +2,7 @@ import threading
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from app import database
-from app.services.sync_service import run_sync
+from app.services.sync_service import run_sync, run_recovery
 
 router = APIRouter(prefix="/api/sync", tags=["sync"])
 
@@ -11,7 +11,12 @@ _cancel_flag = threading.Event()
 
 
 class SyncRequest(BaseModel):
-    tipo: str = "all"  # "nfe", "cte", or "all"
+    tipo: str = "all"  # "nfe", "cte", "nfse", or "all"
+
+
+class RecoveryRequest(BaseModel):
+    tipos: list[str] = ["nfe", "cte"]
+    only_authorized: bool = True
 
 
 @router.post("/trigger")
@@ -79,6 +84,33 @@ def sync_status():
         "next_retry": sched.get("next_retry"),
         "cooldown_until": cooldown_until,
     }
+
+
+@router.post("/recovery")
+def start_recovery(body: RecoveryRequest):
+    if _sync_status["running"]:
+        raise HTTPException(409, "Já existe um sync em andamento.")
+
+    valid = {"nfe", "cte", "nfse"}
+    tipos = [t for t in body.tipos if t in valid]
+    if not tipos:
+        raise HTTPException(400, "Selecione ao menos um tipo.")
+
+    _cancel_flag.clear()
+
+    def _run():
+        _sync_status["running"] = True
+        try:
+            result = run_recovery(tipos, body.only_authorized, _cancel_flag)
+            _sync_status["last_result"] = {"status": "success", "result": result}
+        except Exception as e:
+            _sync_status["last_result"] = {"status": "error", "mensagem": str(e)}
+        finally:
+            _sync_status["running"] = False
+
+    t = threading.Thread(target=_run, daemon=True)
+    t.start()
+    return {"ok": True, "mensagem": f"Recuperação iniciada para: {', '.join(tipos).upper()}"}
 
 
 @router.post("/reset-nsu")

@@ -64,6 +64,14 @@ def _parse_response(xml_text: str) -> tuple[str, str, str, str, list]:
     return c_stat, x_motivo, ult_nsu, max_nsu, docs
 
 
+def _extract_cte_emit_cnpj(xml_bytes: bytes) -> str:
+    try:
+        root = ET.fromstring(xml_bytes)
+        return root.findtext(f".//{{{NS_CTE}}}emit/{{{NS_CTE}}}CNPJ") or ""
+    except Exception:
+        return ""
+
+
 def _extract_tomador_cnpj(xml_bytes: bytes) -> str:
     """Extrai o CNPJ do tomador do serviço do XML CT-e."""
     try:
@@ -122,7 +130,8 @@ def _extract_cte_meta(xml_bytes: bytes) -> dict:
 
 def sync_cte(pfx_path: Path, password: str, cnpj: str, ult_nsu: str,
              xml_dir: Path, tp_amb: str = "1", cuf: str = "43",
-             cancel_flag=None) -> tuple[str, int, list]:
+             cancel_flag=None, cte_role: str = "tomador",
+             only_authorized: bool = False) -> tuple[str, int, list]:
     """
     Download all CT-e since ult_nsu.
     Returns (new_ult_nsu, total_docs, saved_docs_metadata).
@@ -175,12 +184,23 @@ def sync_cte(pfx_path: Path, password: str, cnpj: str, ult_nsu: str,
                     logger.debug(f"CT-e: ignorando evento NSU {nsu} schema {schema}")
                     continue
 
-                # Filtra apenas CT-e onde a empresa consultante é o tomador do serviço
+                # Filtro: somente autorizadas (procCTe) — pula resumos também
+                if only_authorized and not schema.startswith("procCTe"):
+                    continue
+
+                # Filtro de participação (tomador / emitente / ambas)
                 if schema.startswith("proc"):
-                    tomador_cnpj = _extract_tomador_cnpj(xml_bytes)
-                    if tomador_cnpj and tomador_cnpj != cnpj:
-                        logger.debug(f"CT-e NSU {nsu}: empresa não é tomador (tomador={tomador_cnpj}), ignorando.")
-                        continue
+                    if cte_role == "tomador":
+                        tomador_cnpj = _extract_tomador_cnpj(xml_bytes)
+                        if tomador_cnpj and tomador_cnpj != cnpj:
+                            logger.debug(f"CT-e NSU {nsu}: empresa não é tomador (tomador={tomador_cnpj}), ignorando.")
+                            continue
+                    elif cte_role == "emitente":
+                        emit_cnpj = _extract_cte_emit_cnpj(xml_bytes)
+                        if emit_cnpj and emit_cnpj != cnpj:
+                            logger.debug(f"CT-e NSU {nsu}: empresa não é emitente (emit={emit_cnpj}), ignorando.")
+                            continue
+                    # "ambas" → sem filtro adicional
 
                 meta = _extract_cte_meta(xml_bytes)
                 chave = meta["chave"] or nsu
