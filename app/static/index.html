@@ -500,6 +500,10 @@
             <option value="cte_hist">CT-e (histórico)</option>
             <option value="nfse_hist">NFS-e (histórico)</option>
           </optgroup>
+          <optgroup label="Recuperação">
+            <option value="nfe_rec">NF-e (recuperada)</option>
+            <option value="cte_rec">CT-e (recuperado)</option>
+          </optgroup>
         </select>
       </div>
       <div class="filter-group">
@@ -616,6 +620,7 @@
       <button class="rec-tab active" data-tab="nsu"     onclick="showRecTab('nsu')">📦 Histórico NSU</button>
       <button class="rec-tab"        data-tab="chave"   onclick="showRecTab('chave')">🔑 Por Chave</button>
       <button class="rec-tab"        data-tab="periodo" onclick="showRecTab('periodo')">📅 Por Período</button>
+      <button class="rec-tab"        data-tab="docs"    onclick="showRecTab('docs')">📁 Documentos</button>
     </div>
 
     <!-- ── ABA 1: Histórico NSU (existente) ── -->
@@ -738,6 +743,54 @@
         <h3>Andamento</h3>
         <div id="rec-periodo-progress" style="font-size:13px"></div>
       </div>
+    </div>
+
+    <!-- ── ABA 4: Documentos Recuperados ── -->
+    <div id="rec-tab-docs" class="rec-tab-content" style="display:none">
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:16px;flex-wrap:wrap">
+        <select id="rec-docs-tipo" onchange="loadRecDocs()" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:13px">
+          <option value="">Todos Recuperados</option>
+          <option value="nfe_rec">NF-e Recuperadas</option>
+          <option value="cte_rec">CT-e Recuperados</option>
+        </select>
+        <select id="rec-docs-schema" onchange="filterRecTable()" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:13px">
+          <option value="autorizadas" selected>Autorizadas</option>
+          <option value="">Todos</option>
+        </select>
+        <button class="btn btn-secondary btn-sm" onclick="loadRecDocs()">↺ Atualizar</button>
+        <button class="btn btn-secondary btn-sm" onclick="exportRecZip()">⬇ Exportar ZIP</button>
+        <span id="rec-docs-count" style="color:var(--text-muted);font-size:13px;margin-left:4px"></span>
+      </div>
+      <div class="table-wrap">
+        <table style="table-layout:fixed;width:100%">
+          <colgroup>
+            <col style="width:80px">
+            <col style="width:210px">
+            <col style="width:90px">
+            <col>
+            <col>
+            <col style="width:120px">
+            <col style="width:100px">
+            <col style="width:92px">
+          </colgroup>
+          <thead>
+            <tr>
+              <th>Tipo</th>
+              <th>Chave de Acesso</th>
+              <th>Status</th>
+              <th>Emitente</th>
+              <th>Destinatário</th>
+              <th style="text-align:right">Valor (R$)</th>
+              <th>Data</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="rec-docs-table">
+            <tr><td colspan="8" style="text-align:center;color:var(--text-muted);padding:24px">Selecione a aba para carregar documentos.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div id="rec-docs-pagination" style="display:flex;justify-content:center;gap:4px;padding:12px;font-size:13px;flex-wrap:wrap"></div>
     </div>
 
   </div>
@@ -1642,6 +1695,7 @@ function showRecTab(name) {
   document.querySelectorAll('.rec-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
   document.querySelectorAll('.rec-tab-content').forEach(c => c.style.display = 'none');
   document.getElementById('rec-tab-' + name).style.display = '';
+  if (name === 'docs') loadRecDocs();
 }
 
 // ─── Recovery por Chave ────────────────────────────────────────────
@@ -1772,6 +1826,109 @@ function pollRecuperacao(modo) {
       }
     } catch(e) { /* ignore */ }
   }, 3000);
+}
+
+// ─── Documentos Recuperados ───────────────────────────────────────
+let _allRecDocs = [];
+let _filteredRecDocs = [];
+let _recDocsPage = 1;
+const _REC_PAGE_SIZE = 50;
+
+async function loadRecDocs() {
+  const tipo = document.getElementById('rec-docs-tipo')?.value || '';
+  try {
+    if (tipo) {
+      const data = await api(`/api/files/list?tipo=${encodeURIComponent(tipo)}&limit=5000`);
+      _allRecDocs = data.documents || [];
+    } else {
+      const [nfe, cte] = await Promise.all([
+        api('/api/files/list?tipo=nfe_rec&limit=5000'),
+        api('/api/files/list?tipo=cte_rec&limit=5000'),
+      ]);
+      _allRecDocs = [...(nfe.documents || []), ...(cte.documents || [])];
+      _allRecDocs.sort((a, b) => (b.baixado_em || '').localeCompare(a.baixado_em || ''));
+    }
+    filterRecTable();
+  } catch(e) { console.error(e); }
+}
+
+function filterRecTable() {
+  const schema = document.getElementById('rec-docs-schema')?.value || '';
+  _filteredRecDocs = _allRecDocs.filter(d => {
+    if (schema === 'autorizadas' && !((d.schema||'').startsWith('procNFe') || (d.schema||'').startsWith('procCTe') || d.schema === 'NFSE')) return false;
+    return true;
+  });
+  _recDocsPage = 1;
+  renderRecPage();
+  renderRecPagination();
+  const el = document.getElementById('rec-docs-count');
+  if (el) el.textContent = `${_filteredRecDocs.length} de ${_allRecDocs.length} documentos`;
+}
+
+function renderRecPage() {
+  const tbody = document.getElementById('rec-docs-table');
+  if (!tbody) return;
+  const start = (_recDocsPage - 1) * _REC_PAGE_SIZE;
+  const page  = _filteredRecDocs.slice(start, start + _REC_PAGE_SIZE);
+
+  if (!page.length) {
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--text-muted);padding:24px">Nenhum documento encontrado.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = page.map(d => {
+    const fp           = (d.file_path || '').replace(/\\/g, '/');
+    const downloadPath = fp ? `/api/files/download-by-path?path=${encodeURIComponent(fp)}` : '#';
+    const pdfPath      = fp ? `/api/files/pdf?path=${encodeURIComponent(fp)}&tipo=${encodeURIComponent(d.tipo||'')}` : '#';
+    const hasPdf       = fp && (d.schema||'').match(/^(procNFe|procCTe|NFSE)/);
+    const ch           = d.chave || d.nsu || '';
+    const chDisp       = ch.length >= 20 ? escHtml(ch.slice(0,10)+'…'+ch.slice(-10)) : escHtml(ch);
+    return `<tr>
+      <td>${tipoBadge(d.tipo)}</td>
+      <td style="font-family:monospace;font-size:11px;overflow:hidden">
+        <span style="display:flex;align-items:center;gap:4px">
+          <span title="${escHtml(ch)}" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1">${chDisp}</span>
+          ${ch.length===44 ? `<button onclick="copyChave('${escHtml(ch)}',this)" title="Copiar chave" style="flex-shrink:0;background:none;border:none;cursor:pointer;color:var(--text-muted);padding:0;font-size:11px;line-height:1">⧉</button>` : ''}
+        </span>
+      </td>
+      <td>${schemaLabel(d.schema)}</td>
+      <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(d.emitente)}">${escHtml(d.emitente)}</td>
+      <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(d.destinatario)}">${escHtml(d.destinatario)}</td>
+      <td style="text-align:right;font-variant-numeric:tabular-nums">${fmtVal(d.valor)}</td>
+      <td style="white-space:nowrap">${d.data_emissao || '—'}</td>
+      <td style="white-space:nowrap;text-align:right;padding:10px 6px">
+        <a href="${downloadPath}" class="btn btn-secondary btn-sm" title="Baixar XML">⬇</a>
+        ${hasPdf ? `<a href="${pdfPath}" target="_blank" class="btn btn-secondary btn-sm" title="Visualizar PDF" style="margin-left:2px">📄</a>` : ''}
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function renderRecPagination() {
+  const el = document.getElementById('rec-docs-pagination');
+  if (!el) return;
+  const total = _filteredRecDocs.length;
+  const pages = Math.ceil(total / _REC_PAGE_SIZE);
+  if (pages <= 1) { el.innerHTML = ''; return; }
+  el.innerHTML = Array.from({length: pages}, (_, i) => i + 1).map(p =>
+    p === _recDocsPage
+      ? `<span style="padding:4px 10px;background:var(--primary);color:#fff;border-radius:4px">${p}</span>`
+      : `<button class="btn btn-secondary btn-sm" onclick="changeRecPage(${p})">${p}</button>`
+  ).join('');
+}
+
+function changeRecPage(p) {
+  _recDocsPage = p;
+  renderRecPage();
+  renderRecPagination();
+}
+
+function exportRecZip() {
+  const tipo   = document.getElementById('rec-docs-tipo')?.value || '';
+  const schema = document.getElementById('rec-docs-schema')?.value || '';
+  const params = new URLSearchParams();
+  if (tipo) params.set('tipo', tipo);
+  if (schema) params.set('schema_filter', schema);
+  window.location.href = `/api/files/export-zip?${params}`;
 }
 
 // ─── Logs ─────────────────────────────────────────────────────────
