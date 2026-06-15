@@ -27,6 +27,7 @@ def init_db():
                 file_path TEXT,
                 emitente TEXT,
                 destinatario TEXT,
+                tomador TEXT,
                 valor TEXT,
                 data_emissao TEXT,
                 baixado_em TEXT NOT NULL,
@@ -51,6 +52,10 @@ def init_db():
         conn.execute("INSERT OR IGNORE INTO nsu_state (tipo, ult_nsu) VALUES ('nfe_hist', '000000000000000')")
         conn.execute("INSERT OR IGNORE INTO nsu_state (tipo, ult_nsu) VALUES ('cte_hist', '000000000000000')")
         conn.execute("INSERT OR IGNORE INTO nsu_state (tipo, ult_nsu) VALUES ('nfse_hist', '0')")
+        # Migração: adiciona coluna tomador se não existir (banco existente)
+        cols = [r[1] for r in conn.execute("PRAGMA table_info(documents)").fetchall()]
+        if "tomador" not in cols:
+            conn.execute("ALTER TABLE documents ADD COLUMN tomador TEXT")
 
 
 def get_ult_nsu(tipo: str) -> str:
@@ -68,13 +73,14 @@ def set_ult_nsu(tipo: str, nsu: str):
 
 
 def save_document(tipo: str, nsu: str, chave: str, schema: str, file_path: str,
-                  emitente: str = "", destinatario: str = "", valor: str = "", data_emissao: str = ""):
+                  emitente: str = "", destinatario: str = "", tomador: str = "",
+                  valor: str = "", data_emissao: str = ""):
     with get_conn() as conn:
         conn.execute(
             """INSERT OR IGNORE INTO documents
-               (tipo, nsu, chave, schema, file_path, emitente, destinatario, valor, data_emissao, baixado_em)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (tipo, nsu, chave, schema, file_path, emitente, destinatario, valor, data_emissao,
+               (tipo, nsu, chave, schema, file_path, emitente, destinatario, tomador, valor, data_emissao, baixado_em)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (tipo, nsu, chave, schema, file_path, emitente, destinatario, tomador, valor, data_emissao,
              datetime.now().isoformat()),
         )
 

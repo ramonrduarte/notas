@@ -108,7 +108,8 @@ def _sync_tipo(tipo: str, pfx_path, password, cnpj, xml_dir, tp_amb, cuf,
             database.save_document(
                 tipo=tipo, nsu=m["nsu"], chave=m["chave"], schema=m["schema"],
                 file_path=m["file_path"], emitente=m["emitente"],
-                destinatario=m["destinatario"], valor=m["valor"], data_emissao=m["data_emissao"],
+                destinatario=m["destinatario"], tomador=m.get("tomador", ""),
+                valor=m["valor"], data_emissao=m["data_emissao"],
             )
 
         database.set_ult_nsu(tipo, new_nsu)

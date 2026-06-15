@@ -2,6 +2,7 @@ import io
 import zipfile
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse, StreamingResponse
+from pydantic import BaseModel
 from app import config, database
 
 router = APIRouter(prefix="/api/files", tags=["files"])
@@ -38,6 +39,28 @@ def download_by_path(path: str):
         path=str(file_path),
         media_type="application/xml",
         filename=file_path.name,
+    )
+
+
+class ExportSelectedBody(BaseModel):
+    file_paths: list[str]
+
+
+@router.post("/export-zip-selected")
+def export_zip_selected(body: ExportSelectedBody):
+    """Exporta como ZIP somente os arquivos cujos caminhos foram enviados."""
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for fp in body.file_paths:
+            full = config.DATA_DIR / fp.replace("\\", "/")
+            if full.exists():
+                zf.write(full, fp.replace("\\", "/"))
+    buf.seek(0)
+    count = len(body.file_paths)
+    return StreamingResponse(
+        iter([buf.read()]),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="xmls_selecionados_{count}.zip"'},
     )
 
 

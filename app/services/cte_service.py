@@ -72,20 +72,36 @@ def _extract_cte_emit_cnpj(xml_bytes: bytes) -> str:
         return ""
 
 
+def _get_tomador_tag(root, ns: str) -> str:
+    """Retorna o tag XML do elemento tomador baseado no indicador ide/toma."""
+    toma = root.findtext(f".//{{{ns}}}toma") or ""
+    return {"0": "rem", "1": "exped", "2": "receb"}.get(toma, "toma03" if toma == "3" else "")
+
+
 def _extract_tomador_cnpj(xml_bytes: bytes) -> str:
     """Extrai o CNPJ do tomador do serviço do XML CT-e."""
     try:
         root = ET.fromstring(xml_bytes)
         ns = NS_CTE
-        toma = root.findtext(f".//{{{ns}}}toma") or ""
-        tag_map = {"0": "rem", "1": "exped", "2": "receb"}
-        tag = tag_map.get(toma)
+        tag = _get_tomador_tag(root, ns)
         if tag:
             return (root.findtext(f".//{{{ns}}}{tag}/{{{ns}}}CNPJ") or
                     root.findtext(f".//{{{ns}}}{tag}/{{{ns}}}CPF") or "")
-        if toma == "3":
-            return (root.findtext(f".//{{{ns}}}toma03/{{{ns}}}CNPJ") or
-                    root.findtext(f".//{{{ns}}}toma03/{{{ns}}}CPF") or "")
+    except Exception:
+        pass
+    return ""
+
+
+def _extract_tomador_name(xml_bytes: bytes) -> str:
+    """Extrai o nome/razão social do tomador do XML CT-e."""
+    try:
+        root = ET.fromstring(xml_bytes)
+        ns = NS_CTE
+        tag = _get_tomador_tag(root, ns)
+        if tag:
+            return (root.findtext(f".//{{{ns}}}{tag}/{{{ns}}}xNome") or
+                    root.findtext(f".//{{{ns}}}{tag}/{{{ns}}}CNPJ") or
+                    root.findtext(f".//{{{ns}}}{tag}/{{{ns}}}CPF") or "")
     except Exception:
         pass
     return ""
@@ -97,35 +113,24 @@ def _extract_cte_meta(xml_bytes: bytes) -> dict:
         ns = NS_CTE
 
         inf_cte = root.find(f".//{{{ns}}}infCte")
-        ide = root.find(f".//{{{ns}}}ide")
-        emit = root.find(f".//{{{ns}}}emit")
-        dest = root.find(f".//{{{ns}}}dest")
-        v_tot = root.find(f".//{{{ns}}}vTPrest")
+        ide     = root.find(f".//{{{ns}}}ide")
+        emit    = root.find(f".//{{{ns}}}emit")
+        dest    = root.find(f".//{{{ns}}}dest")
 
-        chave = ""
-        if inf_cte is not None:
-            chave = inf_cte.get("Id", "").replace("CTe", "")
+        chave = inf_cte.get("Id", "").replace("CTe", "") if inf_cte is not None else ""
+        data_emissao = (ide.findtext(f"{{{ns}}}dhEmi") or "") if ide is not None else ""
+        emitente     = (emit.findtext(f"{{{ns}}}xNome") or emit.findtext(f"{{{ns}}}CNPJ") or "") if emit is not None else ""
+        destinatario = (dest.findtext(f"{{{ns}}}xNome") or dest.findtext(f"{{{ns}}}CNPJ") or "") if dest is not None else ""
 
-        data_emissao = ""
-        if ide is not None:
-            data_emissao = ide.findtext(f"{{{ns}}}dhEmi") or ""
+        # vTPrest é elemento folha com o valor em texto — não tem filho com mesmo nome
+        valor = root.findtext(f".//{{{ns}}}vTPrest") or ""
 
-        emitente = ""
-        if emit is not None:
-            emitente = emit.findtext(f"{{{ns}}}xNome") or emit.findtext(f"{{{ns}}}CNPJ") or ""
-
-        destinatario = ""
-        if dest is not None:
-            destinatario = dest.findtext(f"{{{ns}}}xNome") or dest.findtext(f"{{{ns}}}CNPJ") or ""
-
-        valor = ""
-        if v_tot is not None:
-            valor = v_tot.findtext(f"{{{ns}}}vTPrest") or ""
+        tomador = _extract_tomador_name(xml_bytes)
 
         return {"chave": chave, "emitente": emitente, "destinatario": destinatario,
-                "valor": valor, "data_emissao": data_emissao[:10]}
+                "tomador": tomador, "valor": valor, "data_emissao": data_emissao[:10]}
     except Exception:
-        return {"chave": "", "emitente": "", "destinatario": "", "valor": "", "data_emissao": ""}
+        return {"chave": "", "emitente": "", "destinatario": "", "tomador": "", "valor": "", "data_emissao": ""}
 
 
 def sync_cte(pfx_path: Path, password: str, cnpj: str, ult_nsu: str,
@@ -221,6 +226,7 @@ def sync_cte(pfx_path: Path, password: str, cnpj: str, ult_nsu: str,
                     "file_path": str(file_path.relative_to(xml_dir.parent)),
                     "emitente": meta["emitente"],
                     "destinatario": meta["destinatario"],
+                    "tomador": meta["tomador"],
                     "valor": meta["valor"],
                     "data_emissao": meta["data_emissao"],
                 })

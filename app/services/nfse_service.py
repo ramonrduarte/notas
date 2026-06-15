@@ -7,6 +7,7 @@ from pathlib import Path
 from datetime import datetime
 
 import requests
+from requests.exceptions import ReadTimeout, ConnectionError as ReqConnError
 
 from app.services.certificate import cert_files
 
@@ -110,11 +111,22 @@ def sync_nfse(pfx_path: Path, password: str, cnpj: str, ult_nsu: str,
             url = f"{base_url}/DFe/{current_nsu}"
             logger.info(f"NFS-e ADN: consultando a partir de NSU {current_nsu}")
 
-            try:
-                resp = session.get(url, params={"cnpjConsulta": cnpj, "lote": "true"}, timeout=60)
-            except requests.RequestException as e:
-                logger.error(f"NFS-e ADN request error: {e}")
-                raise
+            resp = None
+            for attempt in range(3):
+                try:
+                    resp = session.get(url, params={"cnpjConsulta": cnpj, "lote": "true"}, timeout=90)
+                    break
+                except (ReadTimeout, ReqConnError) as e:
+                    if attempt < 2:
+                        wait = 30 * (attempt + 1)
+                        logger.warning(f"NFS-e ADN timeout/conexão (tentativa {attempt+1}/3), aguardando {wait}s: {e}")
+                        time.sleep(wait)
+                    else:
+                        logger.error(f"NFS-e ADN falhou após 3 tentativas: {e}")
+                        raise
+                except requests.RequestException as e:
+                    logger.error(f"NFS-e ADN request error: {e}")
+                    raise
 
             # 404 significa que não há mais documentos a partir deste NSU
             if resp.status_code == 404:
@@ -157,13 +169,15 @@ def sync_nfse(pfx_path: Path, password: str, cnpj: str, ult_nsu: str,
                     continue
 
                 # Filtro de papel (tomadora / emitida / ambas)
+                # Nota: se o tomador usa CPF (pessoa física), toma_cnpj será "".
+                # Como a empresa usa CNPJ, "" != cnpj → documento é corretamente descartado.
                 if nfse_role != "ambas":
                     prest_cnpj, toma_cnpj = _extract_nfse_cnpjs(xml_bytes)
-                    if nfse_role == "tomadora" and toma_cnpj and toma_cnpj != cnpj:
-                        logger.debug(f"NFS-e NSU {doc_nsu}: empresa não é tomador, ignorando.")
+                    if nfse_role == "tomadora" and toma_cnpj != cnpj:
+                        logger.info(f"NFS-e NSU {doc_nsu}: empresa não é tomador (toma_cnpj={toma_cnpj!r}), ignorando.")
                         continue
-                    if nfse_role == "emitida" and prest_cnpj and prest_cnpj != cnpj:
-                        logger.debug(f"NFS-e NSU {doc_nsu}: empresa não é prestador, ignorando.")
+                    if nfse_role == "emitida" and prest_cnpj != cnpj:
+                        logger.info(f"NFS-e NSU {doc_nsu}: empresa não é prestador (prest_cnpj={prest_cnpj!r}), ignorando.")
                         continue
 
                 chave = doc.get("ChaveAcesso") or ""

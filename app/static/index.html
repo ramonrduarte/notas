@@ -160,6 +160,21 @@
     th.sort-asc::after { content: ' ▲'; font-size: 10px; color: var(--primary); }
     th.sort-desc::after { content: ' ▼'; font-size: 10px; color: var(--primary); }
 
+    /* CHECKBOX COLUMN */
+    th.th-check, td.td-check { width: 34px; padding: 8px 6px; text-align: center; }
+    input[type=checkbox] { width: 15px; height: 15px; cursor: pointer; accent-color: var(--primary); }
+    tr.row-selected td { background: rgba(59,130,246,.1); }
+
+    /* PAGINATION */
+    .pagination-wrap { display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 14px; border-top: 1px solid var(--border); flex-wrap: wrap; gap: 8px; }
+    .pagination { display: flex; align-items: center; gap: 3px; }
+    .page-btn { background: var(--surface2); border: 1px solid var(--border); color: var(--text-muted);
+      padding: 4px 9px; border-radius: 4px; cursor: pointer; font-size: 12px; line-height: 1.5; }
+    .page-btn:hover:not([disabled]) { border-color: var(--primary); color: var(--text); }
+    .page-btn.pg-active { background: var(--primary); border-color: var(--primary); color: #fff; cursor: default; }
+    .page-btn[disabled] { opacity: .4; cursor: default; }
+
     /* SYNC STATUS BAR */
     .sync-bar {
       position: fixed; bottom: 20px; right: 20px;
@@ -509,30 +524,49 @@
         <label>Até:</label>
         <input type="date" id="filter-to" onchange="filterTable()" style="max-width:145px"/>
       </div>
+      <div class="filter-group">
+        <label>Por pág.:</label>
+        <select id="page-size" onchange="changePageSize()" style="max-width:80px">
+          <option value="25">25</option>
+          <option value="50" selected>50</option>
+          <option value="100">100</option>
+          <option value="200">200</option>
+          <option value="0">Todos</option>
+        </select>
+      </div>
       <button class="btn btn-secondary btn-sm" onclick="clearFilters()">✕ Limpar filtros</button>
       <button class="btn btn-secondary btn-sm" onclick="loadFiles()">↺ Atualizar</button>
       <button class="btn btn-secondary btn-sm" onclick="exportZip()" id="btn-export-zip">⬇ Exportar ZIP</button>
-      <span class="text-sm" id="files-count" style="margin-left:8px"></span>
+      <button class="btn btn-primary btn-sm" onclick="exportSelected()" id="btn-export-selected" disabled>
+        ⬇ Exportar Selecionados (<span id="selected-count">0</span>)
+      </button>
+      <span class="text-sm" id="files-count" style="margin-left:4px"></span>
     </div>
 
     <div class="table-wrap">
       <table>
         <thead>
           <tr>
+            <th class="th-check"><input type="checkbox" id="select-all-check" onchange="toggleSelectAll(this)" title="Selecionar/desmarcar todos nesta página"></th>
             <th class="sortable" onclick="sortBy('tipo')">Tipo</th>
             <th class="sortable" onclick="sortBy('chave')">Chave de Acesso</th>
             <th>Schema</th>
             <th class="sortable" onclick="sortBy('emitente')">Emitente</th>
             <th class="sortable" onclick="sortBy('destinatario')">Destinatário</th>
+            <th class="sortable col-tomador" onclick="sortBy('tomador')">Tomador</th>
             <th class="sortable" onclick="sortBy('valor')">Valor (R$)</th>
             <th class="sortable" onclick="sortBy('data_emissao')">Data</th>
             <th></th>
           </tr>
         </thead>
         <tbody id="files-table">
-          <tr><td colspan="8" style="text-align:center;color:var(--text-muted)">Carregando...</td></tr>
+          <tr><td colspan="10" style="text-align:center;color:var(--text-muted)">Carregando...</td></tr>
         </tbody>
       </table>
+      <div class="pagination-wrap" id="docs-pagination-wrap">
+        <span class="text-sm" id="pagination-info"></span>
+        <div class="pagination" id="docs-pagination"></div>
+      </div>
     </div>
   </div>
 
@@ -1060,24 +1094,25 @@ async function resetNSU(tipo) {
 }
 
 // ─── Files ────────────────────────────────────────────────────────
-let allDocs = [];
-let sortCol = 'data_emissao';
-let sortDir = -1; // -1=desc, 1=asc
+let allDocs      = [];
+let filteredDocs = [];
+let sortCol      = 'data_emissao';
+let sortDir      = -1;
+let currentPage  = 1;
+let pageSize     = 50;
+let selectedPaths = new Set();
 
 async function loadFiles() {
   try {
-    const data = await api('/api/files/list?limit=1000');
+    const data = await api('/api/files/list?limit=5000');
     allDocs = data.documents;
     filterTable();
-  } catch(e) {
-    console.error(e);
-  }
+  } catch(e) { console.error(e); }
 }
 
 function sortBy(col) {
   if (sortCol === col) { sortDir *= -1; }
   else { sortCol = col; sortDir = 1; }
-  // Update header classes
   document.querySelectorAll('th.sortable').forEach(th => {
     th.classList.remove('sort-asc','sort-desc');
     if (th.getAttribute('onclick') === `sortBy('${col}')`) {
@@ -1088,15 +1123,15 @@ function sortBy(col) {
 }
 
 function filterTable() {
-  const chave    = document.getElementById('filter-chave')?.value.toLowerCase() || '';
-  const emit     = document.getElementById('filter-emitente')?.value.toLowerCase() || '';
-  const dest     = document.getElementById('filter-destinatario')?.value.toLowerCase() || '';
-  const tipo     = document.getElementById('filter-tipo')?.value || '';
-  const schema   = document.getElementById('filter-schema')?.value || '';
-  const from     = document.getElementById('filter-from')?.value || '';
-  const to       = document.getElementById('filter-to')?.value || '';
+  const chave  = document.getElementById('filter-chave')?.value.toLowerCase() || '';
+  const emit   = document.getElementById('filter-emitente')?.value.toLowerCase() || '';
+  const dest   = document.getElementById('filter-destinatario')?.value.toLowerCase() || '';
+  const tipo   = document.getElementById('filter-tipo')?.value || '';
+  const schema = document.getElementById('filter-schema')?.value || '';
+  const from   = document.getElementById('filter-from')?.value || '';
+  const to     = document.getElementById('filter-to')?.value || '';
 
-  let filtered = allDocs.filter(d => {
+  filteredDocs = allDocs.filter(d => {
     if (tipo && d.tipo !== tipo) return false;
     if (schema === 'autorizadas' && !((d.schema||'').startsWith('procNFe') || (d.schema||'').startsWith('procCTe') || d.schema === 'NFSE')) return false;
     if (schema === 'eventos' && !((d.schema||'').toLowerCase().includes('evento'))) return false;
@@ -1109,22 +1144,190 @@ function filterTable() {
     return true;
   });
 
-  // Sort
-  filtered.sort((a, b) => {
+  filteredDocs.sort((a, b) => {
     const va = (a[sortCol] || '').toString();
     const vb = (b[sortCol] || '').toString();
     return sortDir * va.localeCompare(vb, 'pt-BR', {numeric: true});
   });
 
-  renderFilesTable(filtered);
+  currentPage = 1;
+  selectedPaths = new Set();
+  updateSelectionUI();
+
   document.getElementById('files-count').textContent =
-    `${filtered.length} de ${allDocs.length} documentos`;
+    `${filteredDocs.length} de ${allDocs.length} documentos`;
+
+  const showTomador = !tipo || tipo === 'cte' || tipo === 'cte_hist';
+  document.querySelectorAll('.col-tomador').forEach(el => {
+    el.style.display = showTomador ? '' : 'none';
+  });
+
+  renderPage();
+  renderPagination();
 }
 
 function clearFilters() {
   ['filter-chave','filter-emitente','filter-destinatario','filter-tipo','filter-schema','filter-from','filter-to']
     .forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
   filterTable();
+}
+
+function changePageSize() {
+  pageSize = parseInt(document.getElementById('page-size').value);
+  currentPage = 1;
+  renderPage();
+  renderPagination();
+}
+
+function goToPage(page) {
+  const ps = pageSize === 0 ? filteredDocs.length : pageSize;
+  const totalPages = ps > 0 ? Math.ceil(filteredDocs.length / ps) : 1;
+  if (page < 1 || page > totalPages) return;
+  currentPage = page;
+  renderPage();
+  renderPagination();
+}
+
+function renderPage() {
+  const tbody = document.getElementById('files-table');
+  if (!filteredDocs.length) {
+    tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:var(--text-muted)">Nenhum documento encontrado.</td></tr>';
+    document.getElementById('pagination-info').textContent = '';
+    return;
+  }
+
+  const total = filteredDocs.length;
+  const ps    = pageSize === 0 ? total : pageSize;
+  const start = (currentPage - 1) * ps;
+  const end   = Math.min(start + ps, total);
+  const page  = filteredDocs.slice(start, end);
+
+  tbody.innerHTML = page.map(d => {
+    const fp           = (d.file_path || '').replace(/\\/g, '/');
+    const downloadPath = fp ? `/api/files/download-by-path?path=${encodeURIComponent(fp)}` : '#';
+    const chaveShort   = (d.chave || d.nsu || '');
+    const tomador      = d.tomador || '';
+    const checked      = fp && selectedPaths.has(fp) ? 'checked' : '';
+    const selClass     = fp && selectedPaths.has(fp) ? 'row-selected' : '';
+    const safeFp       = fp.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+    return `<tr class="${selClass}">
+      <td class="td-check"><input type="checkbox" ${checked} ${fp ? '' : 'disabled'} onchange="toggleSelect('${safeFp}',this)"></td>
+      <td>${tipoBadge(d.tipo)}</td>
+      <td style="font-family:monospace;font-size:11px" title="${escHtml(chaveShort)}">${escHtml(chaveShort.length>22 ? chaveShort.slice(0,10)+'…'+chaveShort.slice(-10) : chaveShort)}</td>
+      <td>${schemaLabel(d.schema)}</td>
+      <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(d.emitente)}">${escHtml(d.emitente)}</td>
+      <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(d.destinatario)}">${escHtml(d.destinatario)}</td>
+      <td class="col-tomador" style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(tomador)}">${escHtml(tomador)||'<span style="color:var(--text-muted)">—</span>'}</td>
+      <td style="text-align:right">${escHtml(d.valor)}</td>
+      <td>${d.data_emissao || '—'}</td>
+      <td><a href="${downloadPath}" class="btn btn-secondary btn-sm" title="Baixar XML">⬇</a></td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('pagination-info').textContent =
+    `${start+1}–${end} de ${total}`;
+
+  const pagePaths = page.filter(d => d.file_path).map(d => d.file_path.replace(/\\/g,'/'));
+  const chk = document.getElementById('select-all-check');
+  if (chk) {
+    chk.checked       = pagePaths.length > 0 && pagePaths.every(p => selectedPaths.has(p));
+    chk.indeterminate = !chk.checked && pagePaths.some(p => selectedPaths.has(p));
+  }
+}
+
+function renderPagination() {
+  const container = document.getElementById('docs-pagination');
+  if (!container) return;
+  const total      = filteredDocs.length;
+  const ps         = pageSize === 0 ? total : pageSize;
+  const totalPages = ps > 0 ? Math.ceil(total / ps) : 1;
+  if (totalPages <= 1) { container.innerHTML = ''; return; }
+
+  const btn = (label, page, active, disabled) =>
+    `<button class="page-btn${active?' pg-active':''}" onclick="goToPage(${page})" ${disabled?'disabled':''} style="${active?'pointer-events:none':''}">${label}</button>`;
+
+  let html = btn('‹', currentPage - 1, false, currentPage === 1);
+
+  const delta = 2;
+  const pages = new Set([1, totalPages]);
+  for (let i = Math.max(1, currentPage - delta); i <= Math.min(totalPages, currentPage + delta); i++) pages.add(i);
+
+  let prev = 0;
+  [...pages].sort((a,b) => a-b).forEach(p => {
+    if (prev && p - prev > 1) html += '<span class="page-btn" style="cursor:default;pointer-events:none">…</span>';
+    html += btn(p, p, p === currentPage, false);
+    prev = p;
+  });
+
+  html += btn('›', currentPage + 1, false, currentPage === totalPages);
+  container.innerHTML = html;
+}
+
+function toggleSelectAll(chkEl) {
+  const total = filteredDocs.length;
+  const ps    = pageSize === 0 ? total : pageSize;
+  const start = (currentPage - 1) * ps;
+  const page  = filteredDocs.slice(start, Math.min(start + ps, total));
+  page.forEach(d => {
+    const fp = (d.file_path || '').replace(/\\/g, '/');
+    if (fp) { if (chkEl.checked) selectedPaths.add(fp); else selectedPaths.delete(fp); }
+  });
+  updateSelectionUI();
+  renderPage();
+}
+
+function toggleSelect(fp, chkEl) {
+  if (chkEl.checked) selectedPaths.add(fp); else selectedPaths.delete(fp);
+  const row = chkEl.closest('tr');
+  if (row) row.classList.toggle('row-selected', chkEl.checked);
+  updateSelectionUI();
+  const total      = filteredDocs.length;
+  const ps         = pageSize === 0 ? total : pageSize;
+  const start      = (currentPage - 1) * ps;
+  const pagePaths  = filteredDocs.slice(start, Math.min(start + ps, total))
+    .filter(d => d.file_path).map(d => d.file_path.replace(/\\/g,'/'));
+  const chk = document.getElementById('select-all-check');
+  if (chk) {
+    chk.checked       = pagePaths.length > 0 && pagePaths.every(p => selectedPaths.has(p));
+    chk.indeterminate = !chk.checked && pagePaths.some(p => selectedPaths.has(p));
+  }
+}
+
+function updateSelectionUI() {
+  const n   = selectedPaths.size;
+  const btn = document.getElementById('btn-export-selected');
+  const cnt = document.getElementById('selected-count');
+  if (btn) btn.disabled = n === 0;
+  if (cnt) cnt.textContent = n;
+}
+
+async function exportSelected() {
+  if (!selectedPaths.size) return;
+  const btn = document.getElementById('btn-export-selected');
+  btn.disabled = true;
+  btn.innerHTML = '⬇ Gerando ZIP...';
+  try {
+    const resp = await fetch('/api/files/export-zip-selected', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ file_paths: [...selectedPaths] }),
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const blob = await resp.blob();
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = `xmls_selecionados_${selectedPaths.size}.zip`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  } catch(e) {
+    alert('Erro ao gerar ZIP: ' + e.message);
+  } finally {
+    btn.innerHTML = `⬇ Exportar Selecionados (<span id="selected-count">${selectedPaths.size}</span>)`;
+    btn.disabled  = selectedPaths.size === 0;
+  }
 }
 
 const _purgeLabels = {
@@ -1182,29 +1385,6 @@ function schemaLabel(schema) {
   if (schema.startsWith('res'))
     return '<span class="badge" style="background:#1c1917;color:#78716c">Resumo</span>';
   return `<span style="font-size:10px;color:var(--text-muted)">${escHtml(schema)}</span>`;
-}
-
-function renderFilesTable(docs) {
-  const tbody = document.getElementById('files-table');
-  if (!docs.length) {
-    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--text-muted)">Nenhum documento encontrado.</td></tr>';
-    return;
-  }
-  tbody.innerHTML = docs.map(d => {
-    const fp = (d.file_path || '').replace(/\\/g, '/');
-    const downloadPath = fp ? `/api/files/download-by-path?path=${encodeURIComponent(fp)}` : '#';
-    const chaveShort = (d.chave || d.nsu || '');
-    return `<tr>
-      <td>${tipoBadge(d.tipo)}</td>
-      <td style="font-family:monospace;font-size:11px" title="${escHtml(chaveShort)}">${escHtml(chaveShort.length > 22 ? chaveShort.slice(0,10)+'…'+chaveShort.slice(-10) : chaveShort)}</td>
-      <td>${schemaLabel(d.schema)}</td>
-      <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(d.emitente)}">${escHtml(d.emitente)}</td>
-      <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(d.destinatario)}">${escHtml(d.destinatario)}</td>
-      <td style="text-align:right">${escHtml(d.valor)}</td>
-      <td>${d.data_emissao || '—'}</td>
-      <td><a href="${downloadPath}" class="btn btn-secondary btn-sm" title="Baixar XML">⬇</a></td>
-    </tr>`;
-  }).join('');
 }
 
 // ─── Export ZIP ───────────────────────────────────────────────────
