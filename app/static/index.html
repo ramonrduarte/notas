@@ -1205,6 +1205,8 @@ function renderPage() {
   tbody.innerHTML = page.map(d => {
     const fp           = (d.file_path || '').replace(/\\/g, '/');
     const downloadPath = fp ? `/api/files/download-by-path?path=${encodeURIComponent(fp)}` : '#';
+    const pdfPath      = fp ? `/api/files/pdf?path=${encodeURIComponent(fp)}&tipo=${encodeURIComponent(d.tipo||'')}` : '#';
+    const hasPdf       = fp && (d.schema||'').match(/^(procNFe|procCTe|NFSE)/);
     const chaveShort   = (d.chave || d.nsu || '');
     const tomador      = d.tomador || '';
     const checked      = fp && selectedPaths.has(fp) ? 'checked' : '';
@@ -1220,7 +1222,10 @@ function renderPage() {
       <td class="col-tomador" style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(tomador)}">${escHtml(tomador)||'<span style="color:var(--text-muted)">—</span>'}</td>
       <td style="text-align:right">${escHtml(d.valor)}</td>
       <td>${d.data_emissao || '—'}</td>
-      <td><a href="${downloadPath}" class="btn btn-secondary btn-sm" title="Baixar XML">⬇</a></td>
+      <td style="white-space:nowrap">
+        <a href="${downloadPath}" class="btn btn-secondary btn-sm" title="Baixar XML">⬇</a>
+        ${hasPdf ? `<a href="${pdfPath}" target="_blank" class="btn btn-secondary btn-sm" title="Visualizar PDF" style="margin-left:3px">📄</a>` : ''}
+      </td>
     </tr>`;
   }).join('');
 

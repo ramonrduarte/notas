@@ -1,9 +1,12 @@
 import io
+import logging
 import zipfile
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, Response, StreamingResponse
 from pydantic import BaseModel
 from app import config, database
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/files", tags=["files"])
 
@@ -27,6 +30,52 @@ def count_files():
 @router.get("/nsu")
 def get_nsu_state():
     return {t: database.get_ult_nsu(t) for t in _ALL_TIPOS}
+
+
+@router.get("/pdf")
+def get_pdf(path: str, tipo: str = ""):
+    """Gera PDF (DANFE/DACTE/NFS-e) a partir do XML armazenado."""
+    from app.services.pdf_service import generate_danfe, generate_dacte, generate_nfse_pdf
+
+    file_path = config.DATA_DIR / path.replace("\\", "/")
+    if not file_path.exists():
+        raise HTTPException(404, "Arquivo XML não encontrado.")
+
+    xml_bytes = file_path.read_bytes()
+    base_tipo = tipo.replace("_hist", "") if tipo else ""
+    path_lower = path.lower()
+
+    if not base_tipo:
+        if "/nfe/" in path_lower:
+            base_tipo = "nfe"
+        elif "/cte/" in path_lower:
+            base_tipo = "cte"
+        elif "/nfse/" in path_lower:
+            base_tipo = "nfse"
+
+    try:
+        if base_tipo == "nfe":
+            pdf_bytes = generate_danfe(xml_bytes)
+            filename = file_path.stem + "_DANFE.pdf"
+        elif base_tipo == "cte":
+            pdf_bytes = generate_dacte(xml_bytes)
+            filename = file_path.stem + "_DACTE.pdf"
+        elif base_tipo == "nfse":
+            pdf_bytes = generate_nfse_pdf(xml_bytes)
+            filename = file_path.stem + "_NFSe.pdf"
+        else:
+            raise HTTPException(400, "Tipo de documento não identificado.")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Erro ao gerar PDF para {path}: {e}", exc_info=True)
+        raise HTTPException(500, f"Erro ao gerar PDF: {e}")
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="{filename}"'},
+    )
 
 
 @router.get("/download-by-path")

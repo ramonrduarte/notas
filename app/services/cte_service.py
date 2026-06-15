@@ -72,39 +72,50 @@ def _extract_cte_emit_cnpj(xml_bytes: bytes) -> str:
         return ""
 
 
-def _get_tomador_tag(root, ns: str) -> str:
-    """Retorna o tag XML do elemento tomador baseado no indicador ide/toma."""
-    toma = root.findtext(f".//{{{ns}}}toma") or ""
-    return {"0": "rem", "1": "exped", "2": "receb"}.get(toma, "toma03" if toma == "3" else "")
+def _get_tomador_fields(xml_bytes: bytes) -> tuple[str, str]:
+    """
+    Retorna (cnpj_ou_cpf, nome) do tomador do CT-e.
+
+    Trata CT-e v2.00 e v3.00:
+      v2.00: toma 0=rem 1=exped 2=receb 3=toma03 (terceiro)
+      v3.00: toma 0=rem 1=exped 2=receb 3=dest   4=toma04 (terceiro)
+    Para toma=3: tenta toma03 primeiro (v2.00); se vazio, usa dest (v3.00).
+    """
+    try:
+        root = ET.fromstring(xml_bytes)
+        ns = NS_CTE
+        toma = root.findtext(f".//{{{ns}}}toma") or ""
+
+        simple = {"0": "rem", "1": "exped", "2": "receb"}
+        if toma in simple:
+            tag = simple[toma]
+            el = root.find(f".//{{{ns}}}{tag}")
+        elif toma == "3":
+            el = root.find(f".//{{{ns}}}toma03")
+            if el is None:
+                el = root.find(f".//{{{ns}}}dest")
+        elif toma == "4":
+            el = root.find(f".//{{{ns}}}toma04")
+        else:
+            return "", ""
+
+        if el is None:
+            return "", ""
+
+        ident = (el.findtext(f"{{{ns}}}CNPJ") or
+                 el.findtext(f"{{{ns}}}CPF") or "")
+        nome  = (el.findtext(f"{{{ns}}}xNome") or ident)
+        return ident, nome
+    except Exception:
+        return "", ""
 
 
 def _extract_tomador_cnpj(xml_bytes: bytes) -> str:
-    """Extrai o CNPJ do tomador do serviço do XML CT-e."""
-    try:
-        root = ET.fromstring(xml_bytes)
-        ns = NS_CTE
-        tag = _get_tomador_tag(root, ns)
-        if tag:
-            return (root.findtext(f".//{{{ns}}}{tag}/{{{ns}}}CNPJ") or
-                    root.findtext(f".//{{{ns}}}{tag}/{{{ns}}}CPF") or "")
-    except Exception:
-        pass
-    return ""
+    return _get_tomador_fields(xml_bytes)[0]
 
 
 def _extract_tomador_name(xml_bytes: bytes) -> str:
-    """Extrai o nome/razão social do tomador do XML CT-e."""
-    try:
-        root = ET.fromstring(xml_bytes)
-        ns = NS_CTE
-        tag = _get_tomador_tag(root, ns)
-        if tag:
-            return (root.findtext(f".//{{{ns}}}{tag}/{{{ns}}}xNome") or
-                    root.findtext(f".//{{{ns}}}{tag}/{{{ns}}}CNPJ") or
-                    root.findtext(f".//{{{ns}}}{tag}/{{{ns}}}CPF") or "")
-    except Exception:
-        pass
-    return ""
+    return _get_tomador_fields(xml_bytes)[1]
 
 
 def _extract_cte_meta(xml_bytes: bytes) -> dict:
@@ -197,13 +208,13 @@ def sync_cte(pfx_path: Path, password: str, cnpj: str, ult_nsu: str,
                 if schema.startswith("proc"):
                     if cte_role == "tomador":
                         tomador_cnpj = _extract_tomador_cnpj(xml_bytes)
-                        if tomador_cnpj and tomador_cnpj != cnpj:
-                            logger.debug(f"CT-e NSU {nsu}: empresa não é tomador (tomador={tomador_cnpj}), ignorando.")
+                        if tomador_cnpj != cnpj:
+                            logger.info(f"CT-e NSU {nsu}: empresa não é tomador (tomador={tomador_cnpj!r}), ignorando.")
                             continue
                     elif cte_role == "emitente":
                         emit_cnpj = _extract_cte_emit_cnpj(xml_bytes)
                         if emit_cnpj and emit_cnpj != cnpj:
-                            logger.debug(f"CT-e NSU {nsu}: empresa não é emitente (emit={emit_cnpj}), ignorando.")
+                            logger.info(f"CT-e NSU {nsu}: empresa não é emitente (emit={emit_cnpj!r}), ignorando.")
                             continue
                     # "ambas" → sem filtro adicional
 
