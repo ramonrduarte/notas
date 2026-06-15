@@ -112,10 +112,18 @@ def sync_nfse(pfx_path: Path, password: str, cnpj: str, ult_nsu: str,
 
             try:
                 resp = session.get(url, params={"cnpjConsulta": cnpj, "lote": "true"}, timeout=60)
-                resp.raise_for_status()
             except requests.RequestException as e:
                 logger.error(f"NFS-e ADN request error: {e}")
                 raise
+
+            # 404 significa que não há mais documentos a partir deste NSU
+            if resp.status_code == 404:
+                logger.info(f"NFS-e ADN: NSU {current_nsu} — fim dos documentos (HTTP 404).")
+                break
+
+            if not resp.ok:
+                logger.error(f"NFS-e ADN HTTP {resp.status_code}: {resp.text[:200]}")
+                resp.raise_for_status()
 
             data = resp.json()
             status = data.get("StatusProcessamento", "")
