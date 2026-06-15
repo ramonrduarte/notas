@@ -554,14 +554,14 @@
       <table style="table-layout:fixed;width:100%">
         <colgroup>
           <col style="width:34px">
-          <col style="width:62px">
+          <col style="width:80px">
           <col style="width:210px">
           <col style="width:90px">
           <col>
           <col>
           <col class="col-tomador">
-          <col style="width:110px">
-          <col style="width:92px">
+          <col style="width:120px">
+          <col style="width:100px">
           <col style="width:68px">
         </colgroup>
         <thead>
@@ -1265,9 +1265,14 @@ function filterTable() {
   document.getElementById('files-count').textContent =
     `${filteredDocs.length} de ${allDocs.length} documentos`;
 
-  const showTomador = !tipo || tipo === 'cte' || tipo === 'cte_hist';
+  const showTomador = !tipo || tipo === 'cte' || tipo === 'cte_hist' || tipo === 'cte_rec';
   document.querySelectorAll('.col-tomador').forEach(el => {
-    el.style.display = showTomador ? '' : 'none';
+    if (el.tagName === 'COL') {
+      el.style.display = showTomador ? '' : 'none';
+      el.style.width = showTomador ? '' : '0';
+    } else {
+      el.style.display = showTomador ? '' : 'none';
+    }
   });
 
   renderPage();
@@ -1485,13 +1490,13 @@ function showPurgeResult(msg, type) {
   setTimeout(() => el.style.display = 'none', 5000);
 }
 
-const _tipoBase = t => t.replace('_hist', '');
-const _tipoLabel = { nfe:'NF-e', cte:'CT-e', nfse:'NFS-e', nfe_hist:'NF-e H', cte_hist:'CT-e H', nfse_hist:'NFS-e H' };
+const _tipoBase = t => t.replace('_hist', '').replace('_rec', '');
+const _tipoLabel = { nfe:'NF-e', cte:'CT-e', nfse:'NFS-e', nfe_hist:'NF-e H', cte_hist:'CT-e H', nfse_hist:'NFS-e H', nfe_rec:'NF-e R', cte_rec:'CT-e R' };
 function tipoBadge(tipo) {
   const base = _tipoBase(tipo);
-  const isHist = tipo.endsWith('_hist');
+  const faded = tipo.endsWith('_hist') || tipo.endsWith('_rec');
   const label = _tipoLabel[tipo] || tipo.toUpperCase();
-  return `<span class="badge badge-${base}" title="${tipo}" style="${isHist ? 'opacity:.65' : ''}">${label}</span>`;
+  return `<span class="badge badge-${base}" title="${tipo}" style="${faded ? 'opacity:.65' : ''}">${label}</span>`;
 }
 
 function schemaLabel(schema) {
