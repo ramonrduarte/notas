@@ -7,19 +7,23 @@ from app import config, database
 router = APIRouter(prefix="/api/recuperacao", tags=["recuperacao"])
 
 _status: dict = {
-    "running":      False,
-    "tipo":         None,
-    "modo":         None,       # "chave" | "periodo"
-    "total":        0,
-    "processados":  0,
-    "scaneados":    0,
-    "salvos":       0,
-    "nsu_atual":    None,
-    "erros_lista":  [],
-    "data_ini":     None,
-    "data_fim":     None,
-    "iniciado_em":  None,
-    "last_result":  None,
+    "running":          False,
+    "tipo":             None,
+    "modo":             None,        # "chave" | "periodo"
+    "total":            0,
+    "processados":      0,
+    "scaneados":        0,
+    "salvos":           0,
+    "nsu_atual":        None,
+    "erros_lista":      [],
+    "data_ini":         None,
+    "data_fim":         None,
+    "iniciado_em":      None,
+    "last_result":      None,
+    "fase":             None,        # "localizando" | "varrendo"
+    "fase_detalhe":     None,
+    "nsu_inicio_scan":  None,
+    "nsu_fim_scan":     None,
 }
 _cancel = threading.Event()
 
@@ -132,9 +136,11 @@ def por_periodo(body: PeriodoBody):
     _status.update({
         "running": True, "tipo": body.tipo, "modo": "periodo",
         "total": 0, "processados": 0, "scaneados": 0, "salvos": 0,
-        "nsu_atual": "000000000000000", "erros_lista": [],
+        "nsu_atual": None, "erros_lista": [],
         "data_ini": body.data_ini, "data_fim": body.data_fim,
         "iniciado_em": datetime.now().isoformat(), "last_result": None,
+        "fase": "localizando", "fase_detalhe": "Iniciando...",
+        "nsu_inicio_scan": None, "nsu_fim_scan": None,
     })
 
     def _run():

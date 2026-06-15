@@ -147,6 +147,56 @@ def _summary_chave(schema: str, xml_b: bytes) -> str:
         return ""
 
 
+def _find_nsu_for_date(
+    session, url, action, ns, soap_nsu_fn, target_date: str,
+    lo: int, hi: int, progress: dict = None, probe_label: str = "",
+) -> int:
+    """
+    Busca binária para encontrar o NSU aproximado onde os documentos têm
+    data de emissão próxima a target_date. NSUs são aproximadamente (mas não
+    estritamente) ordenados por data, então o resultado é uma estimativa.
+    Retorna o NSU inferior do intervalo encontrado.
+    """
+    probes = 0
+    while hi - lo > 100:
+        mid = (lo + hi) // 2
+        probes += 1
+        if progress is not None:
+            progress["fase_detalhe"] = f"{probe_label} NSU {str(mid).zfill(15)} (sonda {probes})"
+
+        try:
+            body = soap_nsu_fn(str(mid).zfill(15))
+            resp = _post(session, url, body, action)
+            _, _, _, _, docs = _parse(resp, ns)
+
+            dates = [
+                _doc_date(schema, xml_b)
+                for _, schema, xml_b in docs
+                if "Evento" not in schema and "evento" not in schema
+            ]
+            dates = [d for d in dates if d]
+
+            if not dates:
+                lo = mid  # sem datas úteis → avança
+                continue
+
+            median = sorted(dates)[len(dates) // 2]
+            logger.debug(f"Sonda NSU={mid}, mediana={median}, alvo={target_date}")
+
+            if median < target_date:
+                lo = mid
+            else:
+                hi = mid
+
+        except Exception as e:
+            logger.warning(f"Sonda em NSU {mid} falhou: {e}")
+            lo = mid
+
+        time.sleep(1)
+
+    return lo
+
+
 def _save(tipo: str, schema: str, xml_b: bytes, rec_dir: Path, nsu: str = "") -> dict:
     """Save XML to rec_dir/nfe/ or rec_dir/cte/ and return metadata dict."""
     from app.services.nfe_service import _extract_nfe_meta
@@ -269,20 +319,24 @@ def recover_by_period(
     progress: dict = None, cancel_flag=None,
 ) -> tuple[int, int, list]:
     """
-    Varre todos os NSUs a partir de 0, baixa XMLs completos de documentos
-    emitidos entre data_ini e data_fim (formato YYYY-MM-DD).
-    Para resumos (resNFe/resCTe) dentro do período, busca o XML completo
-    via consChNFe/consChCTe.
+    Usa busca binária para localizar o intervalo de NSUs correspondente ao
+    período e depois varre sequencialmente só esse trecho.
+    Para resumos (resNFe/resCTe) faz chamada secundária para obter XML completo.
     Retorna (total_scaneados, total_salvos, saved_meta).
     """
-    is_nfe  = tipo == "nfe"
-    url     = (NFE_URL_PROD if tp_amb == "1" else NFE_URL_HOM) if is_nfe else \
-              (CTE_URL_PROD if tp_amb == "1" else CTE_URL_HOM)
-    action  = (f"{NS_WSDL_NFE}/nfeDistDFeInteresse" if is_nfe
-               else f"{NS_WSDL_CTE}/cteDistDFeInteresse")
-    ns      = NS_NFE if is_nfe else NS_CTE
+    is_nfe = tipo == "nfe"
+    url    = (NFE_URL_PROD if tp_amb == "1" else NFE_URL_HOM) if is_nfe else \
+             (CTE_URL_PROD if tp_amb == "1" else CTE_URL_HOM)
+    action = (f"{NS_WSDL_NFE}/nfeDistDFeInteresse" if is_nfe
+              else f"{NS_WSDL_CTE}/cteDistDFeInteresse")
+    ns     = NS_NFE if is_nfe else NS_CTE
 
-    current_nsu  = "000000000000000"
+    def soap_nsu(nsu: str) -> str:
+        return (_soap_nfe_nsu if is_nfe else _soap_cte_nsu)(cnpj, nsu, tp_amb, cuf)
+
+    def soap_chave(ch: str) -> str:
+        return (_soap_nfe_chave if is_nfe else _soap_cte_chave)(cnpj, ch, tp_amb, cuf)
+
     total_scanned = 0
     total_saved   = 0
     saved_meta    = []
@@ -292,23 +346,70 @@ def recover_by_period(
         session.cert = (cert_f, key_f)
         session.verify = True
 
+        # ── Fase 1: obter NSU máximo ──────────────────────────────────────
+        if progress is not None:
+            progress["fase"] = "localizando"
+            progress["fase_detalhe"] = "Consultando NSU máximo do SEFAZ..."
+
+        resp0 = _post(session, url, soap_nsu("000000000000000"), action)
+        _, _, _, max_nsu_str, _ = _parse(resp0, ns)
+        max_nsu_int = int(max_nsu_str)
+        logger.info(f"NSU máximo: {max_nsu_int}")
+        time.sleep(2)
+
+        # ── Fase 2: busca binária para data_ini ──────────────────────────
+        if progress is not None:
+            progress["fase_detalhe"] = f"Localizando início {data_ini}..."
+
+        nsu_ini_approx = _find_nsu_for_date(
+            session, url, action, ns, soap_nsu, data_ini,
+            0, max_nsu_int, progress, f"Início {data_ini}:",
+        )
+        time.sleep(2)
+
+        # ── Fase 3: busca binária para data_fim ──────────────────────────
+        if progress is not None:
+            progress["fase_detalhe"] = f"Localizando fim {data_fim}..."
+
+        nsu_fim_approx = _find_nsu_for_date(
+            session, url, action, ns, soap_nsu, data_fim,
+            nsu_ini_approx, max_nsu_int, progress, f"Fim {data_fim}:",
+        )
+        time.sleep(2)
+
+        # Margem de 2000 NSUs (~36 dias de buffer) para absorver NSUs fora de ordem
+        MARGIN = 2000
+        nsu_start = max(0, nsu_ini_approx - MARGIN)
+        nsu_end   = min(max_nsu_int, nsu_fim_approx + MARGIN)
+
+        logger.info(
+            f"Período {data_ini}–{data_fim}: NSUs aprox. {nsu_ini_approx}–{nsu_fim_approx}, "
+            f"varredura {nsu_start}–{nsu_end} (max {max_nsu_int})"
+        )
+
+        if progress is not None:
+            progress["fase"]            = "varrendo"
+            progress["fase_detalhe"]    = f"NSU {str(nsu_start).zfill(15)} → {str(nsu_end).zfill(15)}"
+            progress["nsu_inicio_scan"] = str(nsu_start).zfill(15)
+            progress["nsu_fim_scan"]    = str(nsu_end).zfill(15)
+
+        # ── Fase 4: varredura sequencial no intervalo encontrado ─────────
+        current_nsu = str(nsu_start).zfill(15)
+
         while True:
             if cancel_flag and cancel_flag.is_set():
                 logger.info("Recuperação por período cancelada pelo usuário.")
                 break
 
             if progress is not None:
-                progress["nsu_atual"]   = current_nsu
-                progress["scaneados"]   = total_scanned
-                progress["salvos"]      = total_saved
+                progress["nsu_atual"]  = current_nsu
+                progress["scaneados"]  = total_scanned
+                progress["salvos"]     = total_saved
 
-            body    = _soap_nfe_nsu(cnpj, current_nsu, tp_amb, cuf) if is_nfe else \
-                      _soap_cte_nsu(cnpj, current_nsu, tp_amb, cuf)
-            resp_txt = _post(session, url, body, action)
-            c_stat, x_motivo, ult_nsu_resp, max_nsu, docs = _parse(resp_txt, ns)
+            resp_txt = _post(session, url, soap_nsu(current_nsu), action)
+            c_stat, x_motivo, ult_nsu_resp, _, docs = _parse(resp_txt, ns)
 
-            logger.info(f"Rec período {tipo.upper()}: NSU {current_nsu}, "
-                        f"cStat={c_stat}, {len(docs)} docs")
+            logger.info(f"Rec período {tipo.upper()}: NSU {current_nsu}, cStat={c_stat}, {len(docs)} docs")
 
             if c_stat == "656":
                 raise RuntimeError("SEFAZ bloqueou (cStat 656). Aguarde ~1 hora e tente novamente.")
@@ -318,7 +419,6 @@ def recover_by_period(
             for nsu, schema, xml_b in docs:
                 total_scanned += 1
 
-                # Ignora eventos
                 if "Evento" in schema or "evento" in schema:
                     continue
 
@@ -326,21 +426,15 @@ def recover_by_period(
                 if not doc_date:
                     continue
 
-                # Fora do período — pula (não interrompe o loop, NSUs não são estritamente ordenados)
                 if doc_date < data_ini or doc_date > data_fim:
                     continue
 
-                is_summary = schema.startswith("res")
-
-                if is_summary:
-                    # Resumo: busca XML completo pela chave
+                if schema.startswith("res"):
                     chave = _summary_chave(schema, xml_b)
                     if not chave:
                         continue
                     try:
-                        body2    = _soap_nfe_chave(cnpj, chave, tp_amb, cuf) if is_nfe else \
-                                   _soap_cte_chave(cnpj, chave, tp_amb, cuf)
-                        resp2    = _post(session, url, body2, action)
+                        resp2 = _post(session, url, soap_chave(chave), action)
                         _, _, _, _, docs2 = _parse(resp2, ns)
                         if not docs2:
                             logger.warning(f"XML completo não disponível para chave {chave}")
@@ -358,13 +452,16 @@ def recover_by_period(
 
                 saved_meta.append(m)
                 total_saved += 1
-
                 if progress is not None:
                     progress["salvos"] = total_saved
 
             current_nsu = ult_nsu_resp
 
-            if c_stat == "137" or ult_nsu_resp == max_nsu:
+            if int(current_nsu) > nsu_end:
+                logger.info(f"NSU {current_nsu} ultrapassou limite estimado {nsu_end}, encerrando.")
+                break
+
+            if c_stat == "137" or ult_nsu_resp == max_nsu_str:
                 break
 
             time.sleep(5)

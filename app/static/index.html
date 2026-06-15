@@ -1794,8 +1794,15 @@ function pollRecuperacao(modo) {
         if (s.modo === 'chave') {
           info += `<br>Processadas: ${s.processados || 0} / ${s.total || '?'} — Salvas: ${s.salvos || 0}`;
           if (s.nsu_atual) info += `<br>Chave atual: <code style="font-size:11px">${escHtml(s.nsu_atual)}</code>`;
+        } else if (s.fase === 'localizando') {
+          info += `<br><strong>🔍 Localizando período no SEFAZ...</strong>`;
+          if (s.fase_detalhe) info += `<br><span style="color:var(--text-muted);font-size:12px">${escHtml(s.fase_detalhe)}</span>`;
+          if (s.data_ini) info += `<br>Período buscado: ${s.data_ini} → ${s.data_fim}`;
         } else {
-          info += `<br>NSU atual: ${escHtml(s.nsu_atual || '—')} — Scaneados: ${s.scaneados || 0} — Salvos: ${s.salvos || 0}`;
+          info += `<br><strong>📥 Varrendo documentos...</strong>`;
+          if (s.nsu_inicio_scan && s.nsu_fim_scan)
+            info += `<br>Intervalo: NSU ${escHtml(s.nsu_inicio_scan)} → ${escHtml(s.nsu_fim_scan)}`;
+          info += `<br>NSU atual: ${escHtml(s.nsu_atual || '—')} — Escaneados: ${s.scaneados || 0} — Salvos: ${s.salvos || 0}`;
           if (s.data_ini) info += `<br>Período: ${s.data_ini} → ${s.data_fim}`;
         }
         if (progEl) progEl.innerHTML = info;
