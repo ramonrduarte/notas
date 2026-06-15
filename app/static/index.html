@@ -551,17 +551,29 @@
     </div>
 
     <div class="table-wrap">
-      <table>
+      <table style="table-layout:fixed;width:100%">
+        <colgroup>
+          <col style="width:34px">
+          <col style="width:62px">
+          <col style="width:210px">
+          <col style="width:90px">
+          <col>
+          <col>
+          <col class="col-tomador">
+          <col style="width:110px">
+          <col style="width:92px">
+          <col style="width:68px">
+        </colgroup>
         <thead>
           <tr>
             <th class="th-check"><input type="checkbox" id="select-all-check" onchange="toggleSelectAll(this)" title="Selecionar/desmarcar todos nesta página"></th>
             <th class="sortable" onclick="sortBy('tipo')">Tipo</th>
             <th class="sortable" onclick="sortBy('chave')">Chave de Acesso</th>
-            <th>Schema</th>
+            <th>Status</th>
             <th class="sortable" onclick="sortBy('emitente')">Emitente</th>
             <th class="sortable" onclick="sortBy('destinatario')">Destinatário</th>
             <th class="sortable col-tomador" onclick="sortBy('tomador')">Tomador</th>
-            <th class="sortable" onclick="sortBy('valor')">Valor (R$)</th>
+            <th class="sortable" onclick="sortBy('valor')" style="text-align:right">Valor (R$)</th>
             <th class="sortable" onclick="sortBy('data_emissao')">Data</th>
             <th></th>
           </tr>
@@ -807,6 +819,25 @@ function timeUntil(dt) {
 
 function escHtml(s) {
   return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function fmtVal(v) {
+  if (!v) return '<span style="color:var(--text-muted)">—</span>';
+  const n = parseFloat(v);
+  if (isNaN(n)) return escHtml(v);
+  return n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+async function copyChave(chave, btn) {
+  try {
+    await navigator.clipboard.writeText(chave);
+    const prev = btn.textContent;
+    btn.textContent = '✓';
+    btn.style.color = 'var(--success)';
+    setTimeout(() => { btn.textContent = prev; btn.style.color = ''; }, 1500);
+  } catch(e) {
+    prompt('Chave de acesso (Ctrl+C para copiar):', chave);
+  }
 }
 
 // ─── Sync Status Section ─────────────────────────────────────────
@@ -1292,16 +1323,21 @@ function renderPage() {
     return `<tr class="${selClass}">
       <td class="td-check"><input type="checkbox" ${checked} ${fp ? '' : 'disabled'} onchange="toggleSelect('${safeFp}',this)"></td>
       <td>${tipoBadge(d.tipo)}</td>
-      <td style="font-family:monospace;font-size:11px" title="${escHtml(chaveShort)}">${escHtml(chaveShort.length>22 ? chaveShort.slice(0,10)+'…'+chaveShort.slice(-10) : chaveShort)}</td>
+      <td style="font-family:monospace;font-size:11px;overflow:hidden">
+        <span style="display:flex;align-items:center;gap:4px">
+          <span title="${escHtml(chaveShort)}" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1">${escHtml(chaveShort.slice(0,10)+'…'+chaveShort.slice(-10))}</span>
+          ${chaveShort.length===44 ? `<button onclick="copyChave('${escHtml(chaveShort)}',this)" title="Copiar chave completa" style="flex-shrink:0;background:none;border:none;cursor:pointer;color:var(--text-muted);padding:0;font-size:11px;line-height:1">⧉</button>` : ''}
+        </span>
+      </td>
       <td>${schemaLabel(d.schema)}</td>
-      <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(d.emitente)}">${escHtml(d.emitente)}</td>
-      <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(d.destinatario)}">${escHtml(d.destinatario)}</td>
-      <td class="col-tomador" style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(tomador)}">${escHtml(tomador)||'<span style="color:var(--text-muted)">—</span>'}</td>
-      <td style="text-align:right">${escHtml(d.valor)}</td>
-      <td>${d.data_emissao || '—'}</td>
-      <td style="white-space:nowrap">
+      <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(d.emitente)}">${escHtml(d.emitente)}</td>
+      <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(d.destinatario)}">${escHtml(d.destinatario)}</td>
+      <td class="col-tomador" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(tomador)}">${escHtml(tomador)||'<span style="color:var(--text-muted)">—</span>'}</td>
+      <td style="text-align:right;font-variant-numeric:tabular-nums">${fmtVal(d.valor)}</td>
+      <td style="white-space:nowrap">${d.data_emissao || '—'}</td>
+      <td style="white-space:nowrap;text-align:right">
         <a href="${downloadPath}" class="btn btn-secondary btn-sm" title="Baixar XML">⬇</a>
-        ${hasPdf ? `<a href="${pdfPath}" target="_blank" class="btn btn-secondary btn-sm" title="Visualizar PDF" style="margin-left:3px">📄</a>` : ''}
+        ${hasPdf ? `<a href="${pdfPath}" target="_blank" class="btn btn-secondary btn-sm" title="Visualizar PDF" style="margin-left:2px">📄</a>` : ''}
       </td>
     </tr>`;
   }).join('');
