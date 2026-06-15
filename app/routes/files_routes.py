@@ -42,13 +42,13 @@ def download_file(tipo: str, year: str, month: str, filename: str):
 
 
 @router.delete("/purge-events")
-def purge_cte_events():
-    """Remove CT-e eventos already saved (procEventoCTe) from DB and disk."""
+def purge_events():
+    """Remove eventos (NF-e e CT-e) do banco e do disco."""
     removed_files = 0
     removed_db = 0
     with database.get_conn() as conn:
         rows = conn.execute(
-            "SELECT id, file_path, schema FROM documents WHERE tipo='cte' AND (schema LIKE '%Evento%' OR schema LIKE '%evento%')"
+            "SELECT id, file_path FROM documents WHERE schema LIKE '%Evento%' OR schema LIKE '%evento%'"
         ).fetchall()
         for row in rows:
             if row["file_path"]:
@@ -59,3 +59,17 @@ def purge_cte_events():
             conn.execute("DELETE FROM documents WHERE id=?", (row["id"],))
             removed_db += 1
     return {"ok": True, "removidos_db": removed_db, "removidos_disco": removed_files}
+
+
+@router.get("/storage-info")
+def storage_info():
+    """Retorna info sobre onde os arquivos estão armazenados."""
+    xml_dir = config.XML_DIR
+    total_bytes = sum(f.stat().st_size for f in xml_dir.rglob("*") if f.is_file()) if xml_dir.exists() else 0
+    total_files = sum(1 for f in xml_dir.rglob("*.xml") if f.is_file()) if xml_dir.exists() else 0
+    return {
+        "xml_path": str(xml_dir),
+        "db_path": str(config.DB_PATH),
+        "total_xml_files": total_files,
+        "total_size_mb": round(total_bytes / 1024 / 1024, 2),
+    }

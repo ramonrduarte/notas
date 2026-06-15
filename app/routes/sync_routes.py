@@ -46,9 +46,36 @@ def cancel_sync():
 
 @router.get("/status")
 def sync_status():
+    from datetime import datetime, timedelta
+    from app import scheduler as sched_module
+
+    sched = sched_module.get_next_run_times()
+    logs = database.list_sync_logs(limit=40)
+
+    last_nfe = next((l for l in logs if l["tipo"] == "nfe" and l["status"] != "running"), None)
+    last_cte = next((l for l in logs if l["tipo"] == "cte" and l["status"] != "running"), None)
+
+    # Detecta cooldown: 90 min após o último erro 656
+    cooldown_until = None
+    for log in logs:
+        if log.get("status") == "error" and "656" in (log.get("mensagem") or ""):
+            try:
+                fin = datetime.fromisoformat(log["finalizado_em"])
+                end = fin + timedelta(minutes=90)
+                if datetime.now() < end:
+                    cooldown_until = end.isoformat()
+                    break
+            except Exception:
+                pass
+
     return {
         "running": _sync_status["running"],
         "last_result": _sync_status["last_result"],
+        "last_nfe": last_nfe,
+        "last_cte": last_cte,
+        "next_scheduled": sched.get("next_scheduled"),
+        "next_retry": sched.get("next_retry"),
+        "cooldown_until": cooldown_until,
     }
 
 

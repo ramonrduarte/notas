@@ -173,6 +173,12 @@
     /* LOGS */
     .log-entry { padding: 10px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
     .log-entry:last-child { border-bottom: none; }
+
+    /* SYNC STATUS */
+    .status-row { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+    .status-row:last-of-type { border-bottom: none; }
+    .status-detail { color: var(--text-muted); font-size: 12px; }
+    .badge-skipped { background: #1c1917; color: #78716c; }
   </style>
 </head>
 <body>
@@ -226,6 +232,13 @@
         <div class="card-label">NSU CT-e</div>
         <div class="card-value" style="font-size:14px;margin-top:10px;" id="nsu-cte">—</div>
         <div class="card-sub">último baixado</div>
+      </div>
+    </div>
+
+    <div class="form-section">
+      <h3>Status da Sincronização</h3>
+      <div id="sync-status-content">
+        <span style="color:var(--text-muted);font-size:13px">Carregando...</span>
       </div>
     </div>
 
@@ -358,6 +371,19 @@
     </div>
 
     <div class="form-section">
+      <h3>Armazenamento de Arquivos</h3>
+      <p style="font-size:13px;color:var(--text-muted);margin-bottom:14px;">
+        Os XMLs são salvos dentro do container em <code style="font-size:12px;background:var(--bg);padding:2px 6px;border-radius:4px">/data/xmls/nfe/AAAA/MM/</code> e <code style="font-size:12px;background:var(--bg);padding:2px 6px;border-radius:4px">/data/xmls/cte/AAAA/MM/</code>, mapeados para o volume Docker configurado no host. O banco de dados fica em <code style="font-size:12px;background:var(--bg);padding:2px 6px;border-radius:4px">/data/sefaz.db</code>.
+      </p>
+      <div id="storage-info" style="font-size:13px;color:var(--text-muted);margin-bottom:14px;"></div>
+      <div class="flex gap-8">
+        <button class="btn btn-danger btn-sm" id="btn-purge-events" onclick="purgeEvents()">🗑 Limpar Eventos</button>
+      </div>
+      <p style="font-size:12px;color:var(--text-muted);margin-top:8px;">Remove eventos (procEventoNFe, procEventoCTe, etc.) do banco e do disco. Notas autorizadas não são afetadas.</p>
+      <div id="purge-result" class="mt-16" style="display:none"></div>
+    </div>
+
+    <div class="form-section">
       <h3>Zona de Perigo</h3>
       <p style="font-size:13px;color:var(--text-muted);margin-bottom:14px;">Resetar os NSUs faz com que todos os documentos sejam re-baixados na próxima sincronização (documentos dos últimos 90 dias).</p>
       <div class="flex gap-8">
@@ -379,6 +405,15 @@
           <option value="">Todos</option>
           <option value="nfe">NF-e</option>
           <option value="cte">CT-e</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label>Status:</label>
+        <select id="filter-schema" onchange="filterTable()" style="max-width:140px">
+          <option value="autorizadas" selected>Autorizadas</option>
+          <option value="">Todos</option>
+          <option value="eventos">Eventos</option>
+          <option value="resumos">Resumos</option>
         </select>
       </div>
       <div class="filter-group">
@@ -460,6 +495,10 @@ function showPage(name) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById('page-' + name).classList.add('active');
   document.querySelector(`[data-page="${name}"]`).classList.add('active');
+  if (name !== 'dashboard' && _statusRefreshTimer) {
+    clearInterval(_statusRefreshTimer);
+    _statusRefreshTimer = null;
+  }
   if (name === 'dashboard') loadDashboard();
   if (name === 'files') loadFiles();
   if (name === 'logs') loadLogs();
@@ -485,34 +524,159 @@ function fmt(dt) {
   return dt.replace('T', ' ').slice(0, 16);
 }
 
+function fmtTime(dt) {
+  if (!dt) return '—';
+  const d = new Date(dt);
+  return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+}
+
+function fmtDateShort(dt) {
+  if (!dt) return '—';
+  const d = new Date(dt);
+  const today = new Date();
+  const isToday = d.toDateString() === today.toDateString();
+  const yesterday = new Date(today); yesterday.setDate(today.getDate() - 1);
+  const isYesterday = d.toDateString() === yesterday.toDateString();
+  const time = d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  if (isToday) return `hoje às ${time}`;
+  if (isYesterday) return `ontem às ${time}`;
+  return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) + ` às ${time}`;
+}
+
+function timeUntil(dt) {
+  const diff = new Date(dt) - new Date();
+  if (diff <= 0) return 'agora';
+  const min = Math.round(diff / 60000);
+  if (min < 60) return `em ${min} min`;
+  const h = Math.floor(min / 60), m = min % 60;
+  return m > 0 ? `em ${h}h ${m}min` : `em ${h}h`;
+}
+
 function escHtml(s) {
   return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
-// ─── Dashboard ───────────────────────────────────────────────────
-async function loadDashboard() {
-  try {
-    const [counts, nsu, cfg, recent] = await Promise.all([
-      api('/api/files/count'),
-      api('/api/files/nsu'),
-      api('/api/config'),
-      api('/api/files/list?limit=10'),
-    ]);
+// ─── Sync Status Section ─────────────────────────────────────────
+function renderSyncStatus(s) {
+  const el = document.getElementById('sync-status-content');
+  if (!el) return;
 
-    document.getElementById('count-nfe').textContent = counts.nfe;
-    document.getElementById('count-cte').textContent = counts.cte;
-    document.getElementById('nsu-nfe').textContent = nsu.nfe;
-    document.getElementById('nsu-cte').textContent = nsu.cte;
+  const tipos = [
+    { key: 'nfe', label: 'NF-e', last: s.last_nfe },
+    { key: 'cte', label: 'CT-e', last: s.last_cte },
+  ];
 
-    const warn = document.getElementById('alert-config');
-    if (!cfg.has_cert || !cfg.cnpj) {
-      warn.style.display = 'block';
-    } else {
-      warn.style.display = 'none';
+  const inCooldown = s.cooldown_until && new Date() < new Date(s.cooldown_until);
+
+  const rows = tipos.map(({ key, label, last }) => {
+    const badge = `<span class="badge badge-${key}" style="min-width:42px;text-align:center">${label}</span>`;
+
+    if (s.running) {
+      return `<div class="status-row">${badge}
+        <span class="spin" style="color:var(--primary)">⟳</span>
+        <span>Sincronizando...</span>
+      </div>`;
     }
 
-    const tbody = document.getElementById('recent-docs');
-    if (recent.documents.length === 0) {
+    if (!last) {
+      return `<div class="status-row">${badge}
+        <span class="status-detail">Nenhum sync realizado ainda.</span>
+      </div>`;
+    }
+
+    const is656 = last.status === 'error' && (last.mensagem || '').includes('656');
+
+    let icon, detail;
+    if (last.status === 'success') {
+      icon = `<span style="color:var(--success)">✓</span>`;
+      detail = `<span>${last.documentos_baixados} doc(s) sincronizado(s)</span>
+                <span class="status-detail">• ${fmtDateShort(last.finalizado_em)}</span>`;
+    } else if (is656) {
+      icon = `<span style="color:var(--warning)">⚠</span>`;
+      detail = `<span style="color:var(--warning)">Limite de requisições atingido</span>
+                <span class="status-detail">• ${fmtDateShort(last.finalizado_em)}</span>`;
+    } else {
+      icon = `<span style="color:var(--danger)">✕</span>`;
+      detail = `<span style="color:var(--danger)">Erro</span>
+                <span class="status-detail">• ${fmtDateShort(last.finalizado_em)}</span>`;
+    }
+
+    return `<div class="status-row">${badge} ${icon} ${detail}</div>`;
+  }).join('');
+
+  let footer = '';
+
+  if (s.next_retry) {
+    footer += `<div style="margin-top:10px;padding:8px 12px;background:var(--surface2);border-radius:6px;border-left:3px solid var(--warning);font-size:13px">
+      <span style="color:var(--warning)">⟳</span>
+      Retry automático agendado para <strong>${fmtTime(s.next_retry)}</strong>
+      <span class="status-detail">(${timeUntil(s.next_retry)})</span>
+    </div>`;
+  }
+
+  if (s.next_scheduled && !s.running) {
+    footer += `<div style="margin-top:8px;font-size:12px;color:var(--text-muted)">
+      📅 Próximo sync agendado: <strong style="color:var(--text)">${fmtDateShort(s.next_scheduled)}</strong>
+    </div>`;
+  }
+
+  if (inCooldown && !s.next_retry) {
+    footer += `<div style="margin-top:6px;font-size:12px;color:var(--text-muted)">
+      🔒 Sync manual disponível a partir das <strong style="color:var(--text)">${fmtTime(s.cooldown_until)}</strong>
+      <span>(${timeUntil(s.cooldown_until)})</span>
+    </div>`;
+  } else if (inCooldown && s.next_retry) {
+    footer += `<div style="margin-top:6px;font-size:12px;color:var(--text-muted)">
+      🔒 Sync manual disponível após o retry automático das ${fmtTime(s.next_retry)}
+    </div>`;
+  }
+
+  el.innerHTML = rows + footer;
+
+  // Bloqueia botões de sync manual durante cooldown ou sync ativo
+  const blocked = s.running || inCooldown || !!s.next_retry;
+  const tip = s.running ? 'Sync em andamento' :
+              s.next_retry ? `Aguarde o retry automático das ${fmtTime(s.next_retry)}` :
+              inCooldown ? `Aguarde até ${fmtTime(s.cooldown_until)}` : '';
+  ['btn-sync-all', 'btn-sync-nfe', 'btn-sync-cte'].forEach(id => {
+    const btn = document.getElementById(id);
+    if (!btn) return;
+    btn.disabled = blocked;
+    btn.title = tip;
+  });
+}
+
+let _statusRefreshTimer = null;
+
+async function loadSyncStatus() {
+  try {
+    const s = await api('/api/sync/status');
+    renderSyncStatus(s);
+    return s;
+  } catch (e) { /* ignore */ }
+}
+
+// ─── Dashboard ───────────────────────────────────────────────────
+async function loadDashboard() {
+  // Carrega status de sync e counters em paralelo
+  const [counts, nsu, cfg, recent] = await Promise.all([
+    api('/api/files/count').catch(() => ({})),
+    api('/api/files/nsu').catch(() => ({})),
+    api('/api/config').catch(() => ({})),
+    api('/api/files/list?limit=10').catch(() => ({ documents: [] })),
+  ]);
+
+  if (counts.nfe !== undefined) document.getElementById('count-nfe').textContent = counts.nfe;
+  if (counts.cte !== undefined) document.getElementById('count-cte').textContent = counts.cte;
+  if (nsu.nfe) document.getElementById('nsu-nfe').textContent = nsu.nfe;
+  if (nsu.cte) document.getElementById('nsu-cte').textContent = nsu.cte;
+
+  const warn = document.getElementById('alert-config');
+  if (warn) warn.style.display = (!cfg.has_cert || !cfg.cnpj) ? 'block' : 'none';
+
+  const tbody = document.getElementById('recent-docs');
+  if (tbody) {
+    if (!recent.documents.length) {
       tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-muted)">Nenhum documento ainda.</td></tr>';
     } else {
       tbody.innerHTML = recent.documents.map(d => `
@@ -525,9 +689,14 @@ async function loadDashboard() {
           <td>${fmt(d.baixado_em)}</td>
         </tr>`).join('');
     }
-  } catch(e) {
-    console.error(e);
   }
+
+  // Status de sincronização (atualiza seção e botões)
+  await loadSyncStatus();
+
+  // Refresh automático a cada 30s enquanto no dashboard
+  if (_statusRefreshTimer) clearInterval(_statusRefreshTimer);
+  _statusRefreshTimer = setInterval(loadSyncStatus, 30000);
 }
 
 // ─── Sync ─────────────────────────────────────────────────────────
@@ -582,8 +751,6 @@ function pollSyncStatus() {
       if (!s.running) {
         clearInterval(syncPollInterval);
         showSyncBar(false);
-        const btns = ['btn-sync-all','btn-sync-nfe','btn-sync-cte'];
-        btns.forEach(b => document.getElementById(b).disabled = false);
 
         const result = document.getElementById('sync-result');
         if (result) {
@@ -602,6 +769,8 @@ function pollSyncStatus() {
             result.innerHTML = `<div class="alert alert-error">❌ ${escHtml(s.last_result.mensagem)}</div>`;
           }
         }
+        // Atualiza status (inclui cooldown e botões)
+        renderSyncStatus(s);
         loadDashboard();
       }
     } catch(e) { /* ignore */ }
@@ -611,7 +780,14 @@ function pollSyncStatus() {
 // ─── Config ───────────────────────────────────────────────────────
 async function loadConfig() {
   try {
-    const cfg = await api('/api/config');
+    const [cfg, storage] = await Promise.all([
+      api('/api/config'),
+      api('/api/files/storage-info').catch(() => null),
+    ]);
+    if (storage) {
+      const el = document.getElementById('storage-info');
+      if (el) el.textContent = `${storage.total_xml_files} arquivo(s) XML ocupando ${storage.total_size_mb} MB.`;
+    }
     document.getElementById('cfg-cnpj').value = cfg.cnpj || '';
     document.getElementById('cfg-ambiente').value = cfg.ambiente || '1';
     document.getElementById('cfg-uf').value = cfg.uf_code || '43';
@@ -757,11 +933,15 @@ function filterTable() {
   const emit     = document.getElementById('filter-emitente')?.value.toLowerCase() || '';
   const dest     = document.getElementById('filter-destinatario')?.value.toLowerCase() || '';
   const tipo     = document.getElementById('filter-tipo')?.value || '';
+  const schema   = document.getElementById('filter-schema')?.value || '';
   const from     = document.getElementById('filter-from')?.value || '';
   const to       = document.getElementById('filter-to')?.value || '';
 
   let filtered = allDocs.filter(d => {
     if (tipo && d.tipo !== tipo) return false;
+    if (schema === 'autorizadas' && !((d.schema||'').startsWith('procNFe') || (d.schema||'').startsWith('procCTe'))) return false;
+    if (schema === 'eventos' && !((d.schema||'').toLowerCase().includes('evento'))) return false;
+    if (schema === 'resumos' && !(d.schema||'').startsWith('res')) return false;
     if (chave && !(d.chave || '').toLowerCase().includes(chave) && !(d.nsu || '').includes(chave)) return false;
     if (emit && !(d.emitente || '').toLowerCase().includes(emit)) return false;
     if (dest && !(d.destinatario || '').toLowerCase().includes(dest)) return false;
@@ -783,9 +963,31 @@ function filterTable() {
 }
 
 function clearFilters() {
-  ['filter-chave','filter-emitente','filter-destinatario','filter-tipo','filter-from','filter-to']
+  ['filter-chave','filter-emitente','filter-destinatario','filter-tipo','filter-schema','filter-from','filter-to']
     .forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
   filterTable();
+}
+
+async function purgeEvents() {
+  if (!confirm('Remover todos os eventos (NF-e e CT-e) do banco de dados e disco?\n\nIsso não afeta notas autorizadas. Esta ação não pode ser desfeita.')) return;
+  const btn = document.getElementById('btn-purge-events');
+  btn.disabled = true;
+  try {
+    const r = await api('/api/files/purge-events', { method: 'DELETE' });
+    showPurgeResult(`✓ Removidos ${r.removidos_db} registro(s) do banco e ${r.removidos_disco} arquivo(s) do disco.`, 'success');
+    loadDashboard();
+  } catch(e) {
+    showPurgeResult('Erro: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function showPurgeResult(msg, type) {
+  const el = document.getElementById('purge-result');
+  el.style.display = 'block';
+  el.innerHTML = `<div class="alert alert-${type === 'error' ? 'error' : 'success'}">${escHtml(msg)}</div>`;
+  setTimeout(() => el.style.display = 'none', 5000);
 }
 
 function schemaLabel(schema) {
@@ -831,7 +1033,7 @@ async function loadLogs() {
       return;
     }
     tbody.innerHTML = logs.map(l => {
-      const badge = l.status === 'success' ? 'badge-success' : l.status === 'running' ? 'badge-running' : 'badge-error';
+      const badge = l.status === 'success' ? 'badge-success' : l.status === 'running' ? 'badge-running' : l.status === 'skipped' ? 'badge-skipped' : 'badge-error';
       return `<tr>
         <td><span class="badge badge-${l.tipo}">${(l.tipo||'').toUpperCase()}</span></td>
         <td>${fmt(l.iniciado_em)}</td>

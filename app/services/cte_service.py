@@ -64,6 +64,25 @@ def _parse_response(xml_text: str) -> tuple[str, str, str, str, list]:
     return c_stat, x_motivo, ult_nsu, max_nsu, docs
 
 
+def _extract_tomador_cnpj(xml_bytes: bytes) -> str:
+    """Extrai o CNPJ do tomador do serviço do XML CT-e."""
+    try:
+        root = ET.fromstring(xml_bytes)
+        ns = NS_CTE
+        toma = root.findtext(f".//{{{ns}}}toma") or ""
+        tag_map = {"0": "rem", "1": "exped", "2": "receb"}
+        tag = tag_map.get(toma)
+        if tag:
+            return (root.findtext(f".//{{{ns}}}{tag}/{{{ns}}}CNPJ") or
+                    root.findtext(f".//{{{ns}}}{tag}/{{{ns}}}CPF") or "")
+        if toma == "3":
+            return (root.findtext(f".//{{{ns}}}toma03/{{{ns}}}CNPJ") or
+                    root.findtext(f".//{{{ns}}}toma03/{{{ns}}}CPF") or "")
+    except Exception:
+        pass
+    return ""
+
+
 def _extract_cte_meta(xml_bytes: bytes) -> dict:
     try:
         root = ET.fromstring(xml_bytes)
@@ -156,6 +175,13 @@ def sync_cte(pfx_path: Path, password: str, cnpj: str, ult_nsu: str,
                     logger.debug(f"CT-e: ignorando evento NSU {nsu} schema {schema}")
                     continue
 
+                # Filtra apenas CT-e onde a empresa consultante é o tomador do serviço
+                if schema.startswith("proc"):
+                    tomador_cnpj = _extract_tomador_cnpj(xml_bytes)
+                    if tomador_cnpj and tomador_cnpj != cnpj:
+                        logger.debug(f"CT-e NSU {nsu}: empresa não é tomador (tomador={tomador_cnpj}), ignorando.")
+                        continue
+
                 meta = _extract_cte_meta(xml_bytes)
                 chave = meta["chave"] or nsu
 
@@ -186,6 +212,6 @@ def sync_cte(pfx_path: Path, password: str, cnpj: str, ult_nsu: str,
             if c_stat == "137" or ult_nsu_resp == max_nsu:
                 break
 
-            time.sleep(1)
+            time.sleep(5)  # SEFAZ bloqueia com requisições rápidas (cStat 656)
 
     return current_nsu, total_saved, saved_meta

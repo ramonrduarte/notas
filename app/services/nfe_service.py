@@ -185,6 +185,6 @@ def sync_nfe(pfx_path: Path, password: str, cnpj: str, ult_nsu: str,
             if c_stat == "137" or ult_nsu_resp == max_nsu:
                 break
 
-            time.sleep(1)  # be nice to SEFAZ
+            time.sleep(5)  # SEFAZ bloqueia com requisições rápidas (cStat 656)
 
     return current_nsu, total_saved, saved_meta
