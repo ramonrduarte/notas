@@ -156,6 +156,7 @@ def _find_nsu_for_date(
     data de emissão próxima a target_date. NSUs são aproximadamente (mas não
     estritamente) ordenados por data, então o resultado é uma estimativa.
     Retorna o NSU inferior do intervalo encontrado.
+    Levanta RuntimeError se o SEFAZ bloquear (cStat 656).
     """
     probes = 0
     while hi - lo > 100:
@@ -167,7 +168,15 @@ def _find_nsu_for_date(
         try:
             body = soap_nsu_fn(str(mid).zfill(15))
             resp = _post(session, url, body, action)
-            _, _, _, _, docs = _parse(resp, ns)
+            c_stat, x_motivo, _, _, docs = _parse(resp, ns)
+
+            if c_stat == "656":
+                raise RuntimeError("SEFAZ bloqueou (cStat 656). Aguarde ~1 hora e tente novamente.")
+            if c_stat not in ("137", "138"):
+                logger.warning(f"Sonda NSU {mid}: cStat {c_stat} — {x_motivo}, pulando.")
+                lo = mid
+                time.sleep(2)
+                continue
 
             dates = [
                 _doc_date(schema, xml_b)
@@ -178,6 +187,7 @@ def _find_nsu_for_date(
 
             if not dates:
                 lo = mid  # sem datas úteis → avança
+                time.sleep(2)
                 continue
 
             median = sorted(dates)[len(dates) // 2]
@@ -188,11 +198,13 @@ def _find_nsu_for_date(
             else:
                 hi = mid
 
+        except RuntimeError:
+            raise
         except Exception as e:
             logger.warning(f"Sonda em NSU {mid} falhou: {e}")
             lo = mid
 
-        time.sleep(1)
+        time.sleep(2)
 
     return lo
 
@@ -439,7 +451,7 @@ def recover_by_period(
                         if not docs2:
                             logger.warning(f"XML completo não disponível para chave {chave}")
                             continue
-                        nsu2, schema2, xml_b2 = docs2[0]
+                        _, schema2, xml_b2 = docs2[0]
                         m = _save(tipo, schema2, xml_b2, rec_dir, nsu)
                         time.sleep(1)
                     except RuntimeError:
