@@ -147,64 +147,91 @@ def _summary_chave(schema: str, xml_b: bytes) -> str:
         return ""
 
 
+def _probe_median_date(
+    session, url, action, ns, soap_nsu_fn, nsu: int,
+    progress=None, probe_label="", probe_num=0,
+) -> str | None:
+    """Query SEFAZ at nsu, return median document date or None. Raises RuntimeError on 656."""
+    if progress is not None:
+        progress["fase_detalhe"] = f"{probe_label} NSU {str(nsu).zfill(15)} (sonda {probe_num})"
+    try:
+        body = soap_nsu_fn(str(nsu).zfill(15))
+        resp = _post(session, url, body, action)
+        c_stat, x_motivo, _, _, docs = _parse(resp, ns)
+        if c_stat == "656":
+            raise RuntimeError("SEFAZ bloqueou (cStat 656). Aguarde ~1 hora e tente novamente.")
+        if c_stat not in ("137", "138"):
+            logger.warning(f"Sonda NSU {nsu}: cStat {c_stat} — {x_motivo}")
+            return None
+        dates = [
+            _doc_date(schema, xml_b)
+            for _, schema, xml_b in docs
+            if "vento" not in schema
+        ]
+        dates = [d for d in dates if d]
+        return sorted(dates)[len(dates) // 2] if dates else None
+    except RuntimeError:
+        raise
+    except Exception as e:
+        logger.warning(f"Sonda em NSU {nsu} falhou: {e}")
+        return None
+
+
 def _find_nsu_for_date(
     session, url, action, ns, soap_nsu_fn, target_date: str,
-    lo: int, hi: int, progress: dict = None, probe_label: str = "",
+    max_nsu: int, progress: dict = None, probe_label: str = "",
 ) -> int:
     """
-    Busca binária para encontrar o NSU aproximado onde os documentos têm
-    data de emissão próxima a target_date. NSUs são aproximadamente (mas não
-    estritamente) ordenados por data, então o resultado é uma estimativa.
-    Retorna o NSU inferior do intervalo encontrado.
+    Descida exponencial a partir de max_nsu até cruzar target_date, depois
+    busca binária no intervalo pequeno encontrado.
+    Retorna o NSU inferior (última posição onde data <= target_date).
     Levanta RuntimeError se o SEFAZ bloquear (cStat 656).
     """
     probes = 0
+
+    def probe(nsu: int) -> str | None:
+        nonlocal probes
+        probes += 1
+        result = _probe_median_date(
+            session, url, action, ns, soap_nsu_fn, nsu,
+            progress, probe_label, probes,
+        )
+        time.sleep(2)
+        return result
+
+    # Fase 1: descida exponencial desde max_nsu — dobra o passo a cada sonda
+    step = 500
+    lo = 0
+    hi = max_nsu
+    current = max_nsu
+
+    while current > 0:
+        date = probe(current)
+        if date is None:
+            # Sem datas úteis: avança o passo sem atualizar hi
+            current = max(0, current - step)
+            step = min(step * 2, max_nsu // 2 + 1)
+            continue
+        logger.debug(f"Descida: NSU={current}, data={date}, alvo={target_date}, passo={step}")
+        if date <= target_date:
+            lo = current
+            break          # hi já está correto (última sonda mais nova)
+        hi = current
+        current = max(0, current - step)
+        step = min(step * 2, max_nsu // 2 + 1)
+
+    # Fase 2: busca binária no intervalo [lo, hi] já estreito
     while hi - lo > 100:
         mid = (lo + hi) // 2
-        probes += 1
-        if progress is not None:
-            progress["fase_detalhe"] = f"{probe_label} NSU {str(mid).zfill(15)} (sonda {probes})"
-
-        try:
-            body = soap_nsu_fn(str(mid).zfill(15))
-            resp = _post(session, url, body, action)
-            c_stat, x_motivo, _, _, docs = _parse(resp, ns)
-
-            if c_stat == "656":
-                raise RuntimeError("SEFAZ bloqueou (cStat 656). Aguarde ~1 hora e tente novamente.")
-            if c_stat not in ("137", "138"):
-                logger.warning(f"Sonda NSU {mid}: cStat {c_stat} — {x_motivo}, pulando.")
-                lo = mid
-                time.sleep(2)
-                continue
-
-            dates = [
-                _doc_date(schema, xml_b)
-                for _, schema, xml_b in docs
-                if "Evento" not in schema and "evento" not in schema
-            ]
-            dates = [d for d in dates if d]
-
-            if not dates:
-                lo = mid  # sem datas úteis → avança
-                time.sleep(2)
-                continue
-
-            median = sorted(dates)[len(dates) // 2]
-            logger.debug(f"Sonda NSU={mid}, mediana={median}, alvo={target_date}")
-
-            if median < target_date:
-                lo = mid
-            else:
-                hi = mid
-
-        except RuntimeError:
-            raise
-        except Exception as e:
-            logger.warning(f"Sonda em NSU {mid} falhou: {e}")
+        date = probe(mid)
+        if date is None:
             lo = mid
-
-        time.sleep(2)
+            continue
+        logger.debug(f"Binária: NSU={mid}, data={date}, alvo={target_date}")
+        if date < target_date:
+            lo = mid
+        else:
+            hi = mid
 
     return lo
 
@@ -364,7 +391,11 @@ def recover_by_period(
             progress["fase_detalhe"] = "Consultando NSU máximo do SEFAZ..."
 
         resp0 = _post(session, url, soap_nsu("000000000000000"), action)
-        _, _, _, max_nsu_str, _ = _parse(resp0, ns)
+        c_stat0, x_motivo0, _, max_nsu_str, _ = _parse(resp0, ns)
+        if c_stat0 == "656":
+            raise RuntimeError("SEFAZ bloqueou (cStat 656). Aguarde ~1 hora e tente novamente.")
+        if c_stat0 not in ("137", "138"):
+            raise RuntimeError(f"Erro SEFAZ ao obter NSU máximo: {c_stat0} — {x_motivo0}")
         max_nsu_int = int(max_nsu_str)
         logger.info(f"NSU máximo: {max_nsu_int}")
         time.sleep(2)
@@ -375,17 +406,17 @@ def recover_by_period(
 
         nsu_ini_approx = _find_nsu_for_date(
             session, url, action, ns, soap_nsu, data_ini,
-            0, max_nsu_int, progress, f"Início {data_ini}:",
+            max_nsu_int, progress, f"Início {data_ini}:",
         )
         time.sleep(2)
 
-        # ── Fase 3: busca binária para data_fim ──────────────────────────
+        # ── Fase 3: localizar NSU fim ─────────────────────────────────────
         if progress is not None:
             progress["fase_detalhe"] = f"Localizando fim {data_fim}..."
 
         nsu_fim_approx = _find_nsu_for_date(
             session, url, action, ns, soap_nsu, data_fim,
-            nsu_ini_approx, max_nsu_int, progress, f"Fim {data_fim}:",
+            max_nsu_int, progress, f"Fim {data_fim}:",
         )
         time.sleep(2)
 
