@@ -1,7 +1,6 @@
 import base64
 import gzip
 import logging
-import time
 import xml.etree.ElementTree as ET
 from datetime import datetime
 from pathlib import Path
@@ -9,6 +8,7 @@ from pathlib import Path
 import requests
 
 from app.services.certificate import cert_files
+from app.services import sefaz_throttle
 
 logger = logging.getLogger(__name__)
 
@@ -114,6 +114,8 @@ def _parse(xml_text: str, ns: str) -> tuple[str, str, str, str, list]:
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _post(session, url, body, action, timeout=60):
+    service = "cte" if "cte.fazenda" in url else "nfe"
+    sefaz_throttle.throttle(service)
     r = session.post(
         url,
         data=body.encode("utf-8"),
@@ -192,12 +194,10 @@ def _find_nsu_for_date(
     def probe(nsu: int) -> str | None:
         nonlocal probes
         probes += 1
-        result = _probe_median_date(
+        return _probe_median_date(
             session, url, action, ns, soap_nsu_fn, nsu,
             progress, probe_label, probes,
         )
-        time.sleep(2)
-        return result
 
     # Fase 1: descida exponencial desde max_nsu — dobra o passo a cada sonda
     step = 500
@@ -336,8 +336,6 @@ def recover_by_chaves(
                 if progress is not None:
                     progress["salvos"] = total_saved
 
-                time.sleep(2)
-
             except RuntimeError:
                 raise
             except Exception as e:
@@ -398,7 +396,6 @@ def recover_by_period(
             raise RuntimeError(f"Erro SEFAZ ao obter NSU máximo: {c_stat0} — {x_motivo0}")
         max_nsu_int = int(max_nsu_str)
         logger.info(f"NSU máximo: {max_nsu_int}")
-        time.sleep(2)
 
         # ── Fase 2: busca binária para data_ini ──────────────────────────
         if progress is not None:
@@ -408,7 +405,6 @@ def recover_by_period(
             session, url, action, ns, soap_nsu, data_ini,
             max_nsu_int, progress, f"Início {data_ini}:",
         )
-        time.sleep(2)
 
         # ── Fase 3: localizar NSU fim ─────────────────────────────────────
         if progress is not None:
@@ -418,7 +414,6 @@ def recover_by_period(
             session, url, action, ns, soap_nsu, data_fim,
             max_nsu_int, progress, f"Fim {data_fim}:",
         )
-        time.sleep(2)
 
         # Margem de 2000 NSUs (~36 dias de buffer) para absorver NSUs fora de ordem
         MARGIN = 2000
@@ -484,7 +479,6 @@ def recover_by_period(
                             continue
                         _, schema2, xml_b2 = docs2[0]
                         m = _save(tipo, schema2, xml_b2, rec_dir, nsu)
-                        time.sleep(1)
                     except RuntimeError:
                         raise
                     except Exception as e:
@@ -506,7 +500,5 @@ def recover_by_period(
 
             if c_stat == "137" or ult_nsu_resp == max_nsu_str:
                 break
-
-            time.sleep(5)
 
     return total_scanned, total_saved, saved_meta

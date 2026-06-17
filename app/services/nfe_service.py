@@ -1,6 +1,5 @@
 import base64
 import gzip
-import time
 import logging
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -9,6 +8,7 @@ from datetime import datetime
 import requests
 
 from app.services.certificate import cert_files
+from app.services import sefaz_throttle
 
 logger = logging.getLogger(__name__)
 
@@ -141,6 +141,7 @@ def sync_nfe(pfx_path: Path, password: str, cnpj: str, ult_nsu: str,
             soap_body = _build_soap(cnpj, current_nsu, tp_amb, cuf)
             logger.info(f"NF-e DistDFe: consultando a partir de NSU {current_nsu}")
 
+            sefaz_throttle.throttle("nfe")
             try:
                 resp = session.post(
                     url,
@@ -211,6 +212,6 @@ def sync_nfe(pfx_path: Path, password: str, cnpj: str, ult_nsu: str,
             if c_stat == "137" or ult_nsu_resp == max_nsu:
                 break
 
-            time.sleep(5)  # SEFAZ bloqueia com requisições rápidas (cStat 656)
+            # throttle no início do próximo loop controla o intervalo
 
     return current_nsu, total_saved, saved_meta
