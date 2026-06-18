@@ -93,6 +93,7 @@ def por_chave(body: ChavesBody):
                     file_path=m["file_path"], emitente=m["emitente"],
                     destinatario=m["destinatario"], tomador=m.get("tomador", ""),
                     valor=m["valor"], data_emissao=m["data_emissao"],
+                    numero=m.get("numero", ""),
                 )
             _status["last_result"] = {
                 "status": "success",
@@ -158,6 +159,7 @@ def por_periodo(body: PeriodoBody):
                     file_path=m["file_path"], emitente=m["emitente"],
                     destinatario=m["destinatario"], tomador=m.get("tomador", ""),
                     valor=m["valor"], data_emissao=m["data_emissao"],
+                    numero=m.get("numero", ""),
                 )
             _status["last_result"] = {
                 "status": "success",

@@ -110,10 +110,14 @@ def _extract_nfe_meta(xml_bytes: bytes) -> dict:
 
         valor = total.text if total is not None else ""
 
+        numero = ""
+        if ide is not None:
+            numero = ide.findtext(f"{{{ns}}}nNF") or ""
+
         return {"chave": chave, "emitente": emitente, "destinatario": destinatario,
-                "valor": valor, "data_emissao": data_emissao[:10]}
+                "valor": valor, "data_emissao": data_emissao[:10], "numero": numero}
     except Exception:
-        return {"chave": "", "emitente": "", "destinatario": "", "valor": "", "data_emissao": ""}
+        return {"chave": "", "emitente": "", "destinatario": "", "valor": "", "data_emissao": "", "numero": ""}
 
 
 def sync_nfe(pfx_path: Path, password: str, cnpj: str, ult_nsu: str,

@@ -56,6 +56,8 @@ def init_db():
         cols = [r[1] for r in conn.execute("PRAGMA table_info(documents)").fetchall()]
         if "tomador" not in cols:
             conn.execute("ALTER TABLE documents ADD COLUMN tomador TEXT")
+        if "numero" not in cols:
+            conn.execute("ALTER TABLE documents ADD COLUMN numero TEXT")
 
 
 def get_ult_nsu(tipo: str) -> str:
@@ -74,14 +76,14 @@ def set_ult_nsu(tipo: str, nsu: str):
 
 def save_document(tipo: str, nsu: str, chave: str, schema: str, file_path: str,
                   emitente: str = "", destinatario: str = "", tomador: str = "",
-                  valor: str = "", data_emissao: str = ""):
+                  valor: str = "", data_emissao: str = "", numero: str = ""):
     with get_conn() as conn:
         conn.execute(
             """INSERT OR IGNORE INTO documents
-               (tipo, nsu, chave, schema, file_path, emitente, destinatario, tomador, valor, data_emissao, baixado_em)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               (tipo, nsu, chave, schema, file_path, emitente, destinatario, tomador, valor, data_emissao, baixado_em, numero)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (tipo, nsu, chave, schema, file_path, emitente, destinatario, tomador, valor, data_emissao,
-             datetime.now().isoformat()),
+             datetime.now().isoformat(), numero),
         )
 
 

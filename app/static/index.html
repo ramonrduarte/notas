@@ -563,6 +563,7 @@
           <col style="width:80px">
           <col style="width:210px">
           <col style="width:90px">
+          <col style="width:90px">
           <col>
           <col>
           <col class="col-tomador">
@@ -576,6 +577,7 @@
             <th class="sortable" onclick="sortBy('tipo')">Tipo</th>
             <th class="sortable" onclick="sortBy('chave')">Chave de Acesso</th>
             <th>Status</th>
+            <th class="sortable" onclick="sortBy('numero')">Número</th>
             <th class="sortable" onclick="sortBy('emitente')">Emitente</th>
             <th class="sortable" onclick="sortBy('destinatario')">Destinatário</th>
             <th class="sortable col-tomador" onclick="sortBy('tomador')">Tomador</th>
@@ -585,7 +587,7 @@
           </tr>
         </thead>
         <tbody id="files-table">
-          <tr><td colspan="10" style="text-align:center;color:var(--text-muted)">Carregando...</td></tr>
+          <tr><td colspan="11" style="text-align:center;color:var(--text-muted)">Carregando...</td></tr>
         </tbody>
       </table>
       <div class="pagination-wrap" id="docs-pagination-wrap">
@@ -884,14 +886,25 @@ function fmtVal(v) {
 }
 
 async function copyChave(chave, btn) {
-  try {
-    await navigator.clipboard.writeText(chave);
+  const done = () => {
     const prev = btn.textContent;
     btn.textContent = '✓';
     btn.style.color = 'var(--success)';
     setTimeout(() => { btn.textContent = prev; btn.style.color = ''; }, 1500);
+  };
+  try {
+    await navigator.clipboard.writeText(chave);
+    done();
   } catch(e) {
-    prompt('Chave de acesso (Ctrl+C para copiar):', chave);
+    // Fallback para HTTP (sem permissão de Clipboard API)
+    const ta = document.createElement('textarea');
+    ta.value = chave;
+    ta.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0';
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    try { document.execCommand('copy'); done(); } catch(_) {}
+    document.body.removeChild(ta);
   }
 }
 
@@ -1352,7 +1365,7 @@ function goToPage(page) {
 function renderPage() {
   const tbody = document.getElementById('files-table');
   if (!filteredDocs.length) {
-    tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:var(--text-muted)">Nenhum documento encontrado.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;color:var(--text-muted)">Nenhum documento encontrado.</td></tr>';
     document.getElementById('pagination-info').textContent = '';
     return;
   }
@@ -1373,6 +1386,8 @@ function renderPage() {
     const checked      = fp && selectedPaths.has(fp) ? 'checked' : '';
     const selClass     = fp && selectedPaths.has(fp) ? 'row-selected' : '';
     const safeFp       = fp.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+    // Número do documento: vem do backend ou extrai da chave (NF-e/CT-e posição 25-33)
+    const numeroDoc    = d.numero || (chaveShort.length === 44 ? String(parseInt(chaveShort.substring(25, 34), 10) || '') : '');
     return `<tr class="${selClass}">
       <td class="td-check"><input type="checkbox" ${checked} ${fp ? '' : 'disabled'} onchange="toggleSelect('${safeFp}',this)"></td>
       <td>${tipoBadge(d.tipo)}</td>
@@ -1383,6 +1398,7 @@ function renderPage() {
         </span>
       </td>
       <td>${schemaLabel(d.schema)}</td>
+      <td style="font-variant-numeric:tabular-nums;white-space:nowrap">${escHtml(numeroDoc) || '<span style="color:var(--text-muted)">—</span>'}</td>
       <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(d.emitente)}">${escHtml(d.emitente)}</td>
       <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(d.destinatario)}">${escHtml(d.destinatario)}</td>
       <td class="col-tomador" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(tomador)}">${escHtml(tomador)||'<span style="color:var(--text-muted)">—</span>'}</td>

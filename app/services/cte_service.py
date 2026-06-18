@@ -138,10 +138,14 @@ def _extract_cte_meta(xml_bytes: bytes) -> dict:
 
         tomador = _extract_tomador_name(xml_bytes)
 
+        numero = ""
+        if ide is not None:
+            numero = ide.findtext(f"{{{ns}}}nCT") or ""
+
         return {"chave": chave, "emitente": emitente, "destinatario": destinatario,
-                "tomador": tomador, "valor": valor, "data_emissao": data_emissao[:10]}
+                "tomador": tomador, "valor": valor, "data_emissao": data_emissao[:10], "numero": numero}
     except Exception:
-        return {"chave": "", "emitente": "", "destinatario": "", "tomador": "", "valor": "", "data_emissao": ""}
+        return {"chave": "", "emitente": "", "destinatario": "", "tomador": "", "valor": "", "data_emissao": "", "numero": ""}
 
 
 def sync_cte(pfx_path: Path, password: str, cnpj: str, ult_nsu: str,

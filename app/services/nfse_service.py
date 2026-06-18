@@ -62,12 +62,26 @@ def _extract_nfse_meta(xml_bytes: bytes) -> dict:
               root.findtext(f".//{{{ns}}}dhProc") or "")
         data_emissao = dh[:10] if dh else ""
 
-        # Prestador (emitente do serviço)
+        # Número da NFS-e
+        numero = ""
+        if inf is not None:
+            numero = inf.findtext(f"{{{ns}}}cNFSe") or inf.findtext(f"{{{ns}}}nNFSe") or ""
+
+        # Prestador (emitente do serviço) — tenta xNome em prest e depois em emit
         emitente = ""
         prest = root.find(f".//{{{ns}}}prest")
         if prest is not None:
             emitente = (prest.findtext(f"{{{ns}}}xNome") or
                         prest.findtext(f"{{{ns}}}CNPJ") or "")
+        # Se só obteve CNPJ (só dígitos), tenta o elemento emit que pode ter xNome
+        if not emitente or emitente.isdigit():
+            emit_el = root.find(f".//{{{ns}}}emit")
+            if emit_el is not None:
+                nome = emit_el.findtext(f"{{{ns}}}xNome")
+                if nome:
+                    emitente = nome
+                elif not emitente:
+                    emitente = emit_el.findtext(f"{{{ns}}}CNPJ") or ""
 
         # Tomador
         destinatario = ""
@@ -81,9 +95,9 @@ def _extract_nfse_meta(xml_bytes: bytes) -> dict:
                  root.findtext(f".//{{{ns}}}vLiq") or "")
 
         return {"chave": chave, "emitente": emitente, "destinatario": destinatario,
-                "valor": valor, "data_emissao": data_emissao}
+                "valor": valor, "data_emissao": data_emissao, "numero": numero}
     except Exception:
-        return empty
+        return {**empty, "numero": ""}
 
 
 def sync_nfse(pfx_path: Path, password: str, cnpj: str, ult_nsu: str,
