@@ -547,6 +547,14 @@
           <option value="0">Todos</option>
         </select>
       </div>
+      <div class="filter-group">
+        <label>ERP:</label>
+        <select id="filter-lancado" onchange="filterTable()" style="max-width:130px">
+          <option value="">Todos</option>
+          <option value="0">Não lançados</option>
+          <option value="1">Lançados</option>
+        </select>
+      </div>
       <button class="btn btn-secondary btn-sm" onclick="clearFilters()">✕ Limpar filtros</button>
       <button class="btn btn-secondary btn-sm" onclick="loadFiles()">↺ Atualizar</button>
       <button class="btn btn-secondary btn-sm" onclick="exportZip()" id="btn-export-zip">⬇ Exportar ZIP</button>
@@ -569,6 +577,7 @@
           <col class="col-tomador">
           <col style="width:120px">
           <col style="width:100px">
+          <col style="width:46px">
           <col style="width:92px">
         </colgroup>
         <thead>
@@ -583,11 +592,12 @@
             <th class="sortable col-tomador" onclick="sortBy('tomador')">Tomador</th>
             <th class="sortable" onclick="sortBy('valor')" style="text-align:right">Valor (R$)</th>
             <th class="sortable" onclick="sortBy('data_emissao')">Data</th>
+            <th title="Lançado no ERP" style="text-align:center">ERP</th>
             <th></th>
           </tr>
         </thead>
         <tbody id="files-table">
-          <tr><td colspan="11" style="text-align:center;color:var(--text-muted)">Carregando...</td></tr>
+          <tr><td colspan="12" style="text-align:center;color:var(--text-muted)">Carregando...</td></tr>
         </tbody>
       </table>
       <div class="pagination-wrap" id="docs-pagination-wrap">
@@ -905,6 +915,24 @@ async function copyChave(chave, btn) {
     ta.select();
     try { document.execCommand('copy'); done(); } catch(_) {}
     document.body.removeChild(ta);
+  }
+}
+
+async function toggleLancado(docId, el) {
+  const lancado = el.checked;
+  try {
+    await api(`/api/files/${docId}/lancado`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lancado }),
+    });
+    const doc = allDocs.find(d => d.id === docId);
+    if (doc) doc.lancado = lancado ? 1 : 0;
+    const filterVal = document.getElementById('filter-lancado')?.value || '';
+    if (filterVal !== '') filterTable();
+  } catch(e) {
+    el.checked = !lancado;
+    console.error('Erro ao atualizar lançado:', e);
   }
 }
 
@@ -1299,13 +1327,14 @@ function sortBy(col) {
 }
 
 function filterTable() {
-  const chave  = document.getElementById('filter-chave')?.value.toLowerCase() || '';
-  const emit   = document.getElementById('filter-emitente')?.value.toLowerCase() || '';
-  const dest   = document.getElementById('filter-destinatario')?.value.toLowerCase() || '';
-  const tipo   = document.getElementById('filter-tipo')?.value || '';
-  const schema = document.getElementById('filter-schema')?.value || '';
-  const from   = document.getElementById('filter-from')?.value || '';
-  const to     = document.getElementById('filter-to')?.value || '';
+  const chave   = document.getElementById('filter-chave')?.value.toLowerCase() || '';
+  const emit    = document.getElementById('filter-emitente')?.value.toLowerCase() || '';
+  const dest    = document.getElementById('filter-destinatario')?.value.toLowerCase() || '';
+  const tipo    = document.getElementById('filter-tipo')?.value || '';
+  const schema  = document.getElementById('filter-schema')?.value || '';
+  const from    = document.getElementById('filter-from')?.value || '';
+  const to      = document.getElementById('filter-to')?.value || '';
+  const lancado = document.getElementById('filter-lancado')?.value || '';
 
   filteredDocs = allDocs.filter(d => {
     if (tipo && d.tipo !== tipo) return false;
@@ -1317,6 +1346,8 @@ function filterTable() {
     if (dest && !(d.destinatario || '').toLowerCase().includes(dest)) return false;
     if (from && d.data_emissao && d.data_emissao < from) return false;
     if (to && d.data_emissao && d.data_emissao > to) return false;
+    if (lancado === '0' && d.lancado) return false;
+    if (lancado === '1' && !d.lancado) return false;
     return true;
   });
 
@@ -1341,7 +1372,7 @@ function filterTable() {
 }
 
 function clearFilters() {
-  ['filter-chave','filter-emitente','filter-destinatario','filter-tipo','filter-schema','filter-from','filter-to']
+  ['filter-chave','filter-emitente','filter-destinatario','filter-tipo','filter-schema','filter-from','filter-to','filter-lancado']
     .forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
   filterTable();
 }
@@ -1365,7 +1396,7 @@ function goToPage(page) {
 function renderPage() {
   const tbody = document.getElementById('files-table');
   if (!filteredDocs.length) {
-    tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;color:var(--text-muted)">Nenhum documento encontrado.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;color:var(--text-muted)">Nenhum documento encontrado.</td></tr>';
     document.getElementById('pagination-info').textContent = '';
     return;
   }
@@ -1404,6 +1435,9 @@ function renderPage() {
       <td class="col-tomador" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(tomador)}">${escHtml(tomador)||'<span style="color:var(--text-muted)">—</span>'}</td>
       <td style="text-align:right;font-variant-numeric:tabular-nums">${fmtVal(d.valor)}</td>
       <td style="white-space:nowrap">${d.data_emissao || '—'}</td>
+      <td style="text-align:center;padding:10px 4px">
+        <input type="checkbox" class="lancado-check" ${d.lancado ? 'checked' : ''} onchange="toggleLancado(${d.id},this)" title="Lançado no ERP">
+      </td>
       <td style="white-space:nowrap;text-align:right;padding:10px 6px">
         <a href="${downloadPath}" class="btn btn-secondary btn-sm" title="Baixar XML">⬇</a>
         ${hasPdf ? `<a href="${pdfPath}" target="_blank" class="btn btn-secondary btn-sm" title="Visualizar PDF" style="margin-left:2px">📄</a>` : ''}

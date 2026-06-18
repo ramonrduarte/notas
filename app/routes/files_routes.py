@@ -91,6 +91,16 @@ def download_by_path(path: str):
     )
 
 
+class LancadoBody(BaseModel):
+    lancado: bool
+
+
+@router.patch("/{doc_id}/lancado")
+def update_lancado(doc_id: int, body: LancadoBody):
+    database.set_lancado(doc_id, body.lancado)
+    return {"ok": True}
+
+
 class ExportSelectedBody(BaseModel):
     file_paths: list[str]
 

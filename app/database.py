@@ -58,6 +58,8 @@ def init_db():
             conn.execute("ALTER TABLE documents ADD COLUMN tomador TEXT")
         if "numero" not in cols:
             conn.execute("ALTER TABLE documents ADD COLUMN numero TEXT")
+        if "lancado" not in cols:
+            conn.execute("ALTER TABLE documents ADD COLUMN lancado INTEGER DEFAULT 0")
 
 
 def get_ult_nsu(tipo: str) -> str:
@@ -84,6 +86,14 @@ def save_document(tipo: str, nsu: str, chave: str, schema: str, file_path: str,
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (tipo, nsu, chave, schema, file_path, emitente, destinatario, tomador, valor, data_emissao,
              datetime.now().isoformat(), numero),
+        )
+
+
+def set_lancado(doc_id: int, lancado: bool):
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE documents SET lancado = ? WHERE id = ?",
+            (1 if lancado else 0, doc_id),
         )
 
 
