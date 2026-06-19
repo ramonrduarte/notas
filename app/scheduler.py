@@ -1,13 +1,9 @@
 import logging
-from datetime import datetime, timedelta
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 logger = logging.getLogger(__name__)
 _scheduler = BackgroundScheduler(timezone="America/Sao_Paulo")
-
-_RETRY_DELAY_MINUTES = 90
-_MAX_RETRIES = 4
 
 
 def _run_scheduled_sync():
@@ -15,52 +11,18 @@ def _run_scheduled_sync():
     logger.info("Sync agendado iniciado.")
     try:
         results = run_sync("all")
-        _schedule_retry_if_656(results)
+        tipos_656 = [
+            tipo for tipo, r in results.items()
+            if r.get("status") == "error" and "656" in (r.get("mensagem") or "")
+        ]
+        if tipos_656:
+            logger.warning(
+                f"Consumo indevido (656) para {tipos_656}. "
+                "Próxima tentativa no sync agendado amanhã. "
+                "NÃO acione sync manual — cada tentativa prolonga o bloqueio no SEFAZ."
+            )
     except Exception as e:
         logger.error(f"Erro no sync agendado: {e}", exc_info=True)
-
-
-def _schedule_retry_if_656(results: dict, attempt: int = 1):
-    tipos_656 = [
-        tipo for tipo, r in results.items()
-        if r.get("status") == "error" and "656" in (r.get("mensagem") or "")
-    ]
-    if not tipos_656:
-        return
-    if attempt > _MAX_RETRIES:
-        logger.error(
-            f"Consumo indevido (656) para {tipos_656} após {_MAX_RETRIES} tentativas. "
-            "Próxima tentativa no sync agendado amanhã."
-        )
-        return
-    retry_time = datetime.now() + timedelta(minutes=_RETRY_DELAY_MINUTES)
-    logger.warning(
-        f"Consumo indevido (656) para {tipos_656} (tentativa {attempt}/{_MAX_RETRIES}). "
-        f"Retry automático agendado para {retry_time.strftime('%H:%M')} ({_RETRY_DELAY_MINUTES} min)"
-    )
-    _scheduler.add_job(
-        _retry_after_656,
-        "date",
-        run_date=retry_time,
-        args=[",".join(tipos_656), attempt],
-        id="retry_656",
-        replace_existing=True,
-    )
-
-
-def _retry_after_656(tipos_str: str, attempt: int = 1):
-    from app.services.sync_service import run_sync
-    tipos = tipos_str.split(",")
-    logger.info(f"Retry após 656 iniciado para: {tipos} (tentativa {attempt}/{_MAX_RETRIES})")
-    results = {}
-    try:
-        for tipo in tipos:
-            partial = run_sync(tipo)
-            results.update(partial)
-    except Exception as e:
-        logger.error(f"Erro no retry após 656: {e}", exc_info=True)
-        return
-    _schedule_retry_if_656(results, attempt=attempt + 1)
 
 
 def start_scheduler(hour: int = 7, minute: int = 0):
@@ -90,12 +52,6 @@ def get_next_run_times() -> dict:
         job = _scheduler.get_job("daily_sync")
         if job and job.next_run_time:
             result["next_scheduled"] = job.next_run_time.isoformat()
-    except Exception:
-        pass
-    try:
-        job = _scheduler.get_job("retry_656")
-        if job and job.next_run_time:
-            result["next_retry"] = job.next_run_time.isoformat()
     except Exception:
         pass
     return result

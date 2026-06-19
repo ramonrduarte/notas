@@ -64,18 +64,17 @@ def sync_status():
     last_nfe_hist = next((l for l in logs if l["tipo"] == "nfe_hist" and l["status"] != "running"), None)
     last_cte_hist = next((l for l in logs if l["tipo"] == "cte_hist" and l["status"] != "running"), None)
 
-    # Detecta cooldown: 90 min após o último erro 656
+    # Cooldown NF-e: 6h após o último sync bem-sucedido
     cooldown_until = None
-    for log in logs:
-        if log.get("status") == "error" and "656" in (log.get("mensagem") or ""):
-            try:
-                fin = datetime.fromisoformat(log["finalizado_em"])
-                end = fin + timedelta(minutes=90)
-                if datetime.now() < end:
-                    cooldown_until = end.isoformat()
-                    break
-            except Exception:
-                pass
+    last_nfe_ok = next((l for l in logs if l["tipo"] == "nfe" and l["status"] == "success"), None)
+    if last_nfe_ok and last_nfe_ok.get("finalizado_em"):
+        try:
+            fin = datetime.fromisoformat(last_nfe_ok["finalizado_em"])
+            end = fin + timedelta(hours=6)
+            if datetime.now() < end:
+                cooldown_until = end.isoformat()
+        except Exception:
+            pass
 
     return {
         "running": _sync_status["running"],
@@ -86,7 +85,6 @@ def sync_status():
         "last_nfe_hist": last_nfe_hist,
         "last_cte_hist": last_cte_hist,
         "next_scheduled": sched.get("next_scheduled"),
-        "next_retry": sched.get("next_retry"),
         "cooldown_until": cooldown_until,
     }
 

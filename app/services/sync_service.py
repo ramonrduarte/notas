@@ -1,5 +1,6 @@
 import logging
 import threading
+from datetime import datetime, timedelta
 from app import config, database
 from app.services import nfe_service, cte_service, nfse_service
 
@@ -78,16 +79,36 @@ def run_recovery(tipos: list[str], only_authorized: bool,
     return results
 
 
+_NFE_COOLDOWN_HOURS = 6
+
+
 def _sync_tipo(tipo: str, pfx_path, password, cnpj, xml_dir, tp_amb, cuf,
                cancel_flag: threading.Event = None, only_authorized: bool = False,
                nfe_direction: str = "ambas", cte_role: str = "tomador",
                nfse_role: str = "ambas") -> dict:
+    base = tipo.replace("_hist", "")
+
+    # NF-e DistDFe permite no máximo 1 sessão por período (~diária).
+    # Duas sessões no mesmo dia causam cStat 656 e cada retry prolonga o bloqueio.
+    if base == "nfe" and not tipo.endswith("_hist"):
+        last_ok = database.get_last_success_time(tipo)
+        if last_ok:
+            elapsed = datetime.now() - datetime.fromisoformat(last_ok)
+            if elapsed < timedelta(hours=_NFE_COOLDOWN_HOURS):
+                h = int(elapsed.total_seconds() // 3600)
+                m = int((elapsed.total_seconds() % 3600) // 60)
+                msg = (
+                    f"NF-e sincronizada há {h}h{m:02d}min. "
+                    f"Aguarde ao menos {_NFE_COOLDOWN_HOURS}h entre sincronizações para evitar cStat 656."
+                )
+                logger.warning(msg)
+                return {"status": "skipped", "mensagem": msg}
+
     ult_nsu = database.get_ult_nsu(tipo)
     log_id = database.start_sync_log(tipo, ult_nsu)
     logger.info(f"Iniciando sync {tipo.upper()} a partir de NSU {ult_nsu}")
 
     try:
-        base = tipo.replace("_hist", "")  # nfe_hist → nfe
         if base == "nfe":
             new_nsu, total, meta_list = nfe_service.sync_nfe(
                 pfx_path, password, cnpj, ult_nsu, xml_dir, tp_amb, cuf, cancel_flag,

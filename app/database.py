@@ -139,6 +139,15 @@ def finish_sync_log(log_id: int, status: str, nsu_final: str, docs: int, mensage
         )
 
 
+def get_last_success_time(tipo: str):
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT finalizado_em FROM sync_log WHERE tipo = ? AND status = 'success' ORDER BY finalizado_em DESC LIMIT 1",
+            (tipo,),
+        ).fetchone()
+        return row["finalizado_em"] if row else None
+
+
 def list_sync_logs(limit: int = 50) -> list:
     with get_conn() as conn:
         rows = conn.execute(
