@@ -948,6 +948,7 @@ function renderSyncStatus(s) {
   ];
 
   const inCooldown = s.cooldown_until && new Date() < new Date(s.cooldown_until);
+  const inBlocked  = s.blocked_until  && new Date() < new Date(s.blocked_until);
 
   const rows = tipos.map(({ key, label, last }) => {
     const badge = `<span class="badge badge-${key}" style="min-width:42px;text-align:center">${label}</span>`;
@@ -966,15 +967,24 @@ function renderSyncStatus(s) {
     }
 
     const is656 = last.status === 'error' && (last.mensagem || '').includes('656');
+    const isSkipped = last.status === 'skipped';
 
     let icon, detail;
     if (last.status === 'success') {
       icon = `<span style="color:var(--success)">✓</span>`;
       detail = `<span>${last.documentos_baixados} doc(s) sincronizado(s)</span>
                 <span class="status-detail">• ${fmtDateShort(last.finalizado_em)}</span>`;
+    } else if (is656 && key === 'nfe' && inBlocked) {
+      icon = `<span style="color:var(--warning)">⚠</span>`;
+      detail = `<span style="color:var(--warning)">Bloqueado pelo SEFAZ (656)</span>
+                <span class="status-detail">• próxima tentativa ${fmtDateShort(s.blocked_until)}</span>`;
     } else if (is656) {
       icon = `<span style="color:var(--warning)">⚠</span>`;
       detail = `<span style="color:var(--warning)">Limite de requisições atingido</span>
+                <span class="status-detail">• ${fmtDateShort(last.finalizado_em)}</span>`;
+    } else if (isSkipped) {
+      icon = `<span style="color:var(--text-muted)">—</span>`;
+      detail = `<span style="color:var(--text-muted)">Aguardando cooldown</span>
                 <span class="status-detail">• ${fmtDateShort(last.finalizado_em)}</span>`;
     } else {
       icon = `<span style="color:var(--danger)">✕</span>`;
@@ -992,6 +1002,15 @@ function renderSyncStatus(s) {
       <span style="color:var(--warning)">⟳</span>
       Retry automático agendado para <strong>${fmtTime(s.next_retry)}</strong>
       <span class="status-detail">(${timeUntil(s.next_retry)})</span>
+    </div>`;
+  }
+
+  if (inBlocked && !s.running) {
+    footer += `<div style="margin-top:10px;padding:8px 12px;background:var(--surface2);border-radius:6px;border-left:3px solid var(--warning);font-size:13px">
+      <span style="color:var(--warning)">⚠</span>
+      NF-e bloqueada pelo SEFAZ (cStat 656). Próxima tentativa automática em
+      <strong style="color:var(--text)">${fmtDateShort(s.blocked_until)}</strong>
+      <span class="status-detail">(${timeUntil(s.blocked_until)})</span>
     </div>`;
   }
 
@@ -1014,17 +1033,26 @@ function renderSyncStatus(s) {
 
   el.innerHTML = rows + footer;
 
-  // Bloqueia botões de sync manual durante cooldown ou sync ativo
-  const blocked = s.running || inCooldown || !!s.next_retry;
-  const tip = s.running ? 'Sync em andamento' :
-              s.next_retry ? `Aguarde o retry automático das ${fmtTime(s.next_retry)}` :
-              inCooldown ? `Aguarde até ${fmtTime(s.cooldown_until)}` : '';
-  ['btn-sync-all', 'btn-sync-nfe', 'btn-sync-cte', 'btn-sync-nfse'].forEach(id => {
+  // Bloqueia botões de sync manual durante cooldown, bloqueio 656 ou sync ativo
+  const nfeBlocked = inBlocked || inCooldown;
+  const allBlocked = s.running || !!s.next_retry;
+  const tipNfe = inBlocked ? `NF-e bloqueada pelo SEFAZ até ${fmtTime(s.blocked_until)}` :
+                 inCooldown ? `Aguarde até ${fmtTime(s.cooldown_until)}` : '';
+  const tipAll = s.running ? 'Sync em andamento' :
+                 s.next_retry ? `Aguarde o retry automático das ${fmtTime(s.next_retry)}` : tipNfe;
+
+  ['btn-sync-all', 'btn-sync-cte', 'btn-sync-nfse'].forEach(id => {
     const btn = document.getElementById(id);
     if (!btn) return;
-    btn.disabled = blocked;
-    btn.title = tip;
+    btn.disabled = allBlocked;
+    btn.title = tipAll;
   });
+
+  const btnNfe = document.getElementById('btn-sync-nfe');
+  if (btnNfe) {
+    btnNfe.disabled = allBlocked || nfeBlocked;
+    btnNfe.title = allBlocked ? tipAll : tipNfe;
+  }
 }
 
 let _statusRefreshTimer = null;

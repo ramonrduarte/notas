@@ -148,6 +148,16 @@ def get_last_success_time(tipo: str):
         return row["finalizado_em"] if row else None
 
 
+def get_last_error_sync(tipo: str) -> tuple:
+    """Returns (mensagem, finalizado_em) of the most recent error sync, or (None, None)."""
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT mensagem, finalizado_em FROM sync_log WHERE tipo = ? AND status = 'error' ORDER BY finalizado_em DESC LIMIT 1",
+            (tipo,),
+        ).fetchone()
+        return (row["mensagem"], row["finalizado_em"]) if row else (None, None)
+
+
 def list_sync_logs(limit: int = 50) -> list:
     with get_conn() as conn:
         rows = conn.execute(

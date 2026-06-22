@@ -80,6 +80,7 @@ def run_recovery(tipos: list[str], only_authorized: bool,
 
 
 _NFE_COOLDOWN_HOURS = 6
+_NFE_656_BACKOFF_HOURS = 48  # Após bloqueio 656, não tentar por 48h para não prolongar o bloqueio no SEFAZ
 
 
 def _sync_tipo(tipo: str, pfx_path, password, cnpj, xml_dir, tp_amb, cuf,
@@ -88,9 +89,9 @@ def _sync_tipo(tipo: str, pfx_path, password, cnpj, xml_dir, tp_amb, cuf,
                nfse_role: str = "ambas") -> dict:
     base = tipo.replace("_hist", "")
 
-    # NF-e DistDFe permite no máximo 1 sessão por período (~diária).
-    # Duas sessões no mesmo dia causam cStat 656 e cada retry prolonga o bloqueio.
+    # NF-e DistDFe: proteções contra cStat 656
     if base == "nfe" and not tipo.endswith("_hist"):
+        # 1. Cooldown após último sucesso
         last_ok = database.get_last_success_time(tipo)
         if last_ok:
             elapsed = datetime.now() - datetime.fromisoformat(last_ok)
@@ -100,6 +101,21 @@ def _sync_tipo(tipo: str, pfx_path, password, cnpj, xml_dir, tp_amb, cuf,
                 msg = (
                     f"NF-e sincronizada há {h}h{m:02d}min. "
                     f"Aguarde ao menos {_NFE_COOLDOWN_HOURS}h entre sincronizações para evitar cStat 656."
+                )
+                logger.warning(msg)
+                return {"status": "skipped", "mensagem": msg}
+
+        # 2. Backoff longo após bloqueio 656 — cada tentativa pode prolongar o bloqueio no SEFAZ
+        last_err_msg, last_err_time = database.get_last_error_sync(tipo)
+        if last_err_time and "656" in (last_err_msg or ""):
+            elapsed_block = datetime.now() - datetime.fromisoformat(last_err_time)
+            if elapsed_block < timedelta(hours=_NFE_656_BACKOFF_HOURS):
+                h = int(elapsed_block.total_seconds() // 3600)
+                m = int((elapsed_block.total_seconds() % 3600) // 60)
+                remaining_h = int((_NFE_656_BACKOFF_HOURS * 3600 - elapsed_block.total_seconds()) // 3600) + 1
+                msg = (
+                    f"NF-e bloqueada pelo SEFAZ (cStat 656) há {h}h{m:02d}min. "
+                    f"Aguardando mais {remaining_h}h para não prolongar o bloqueio."
                 )
                 logger.warning(msg)
                 return {"status": "skipped", "mensagem": msg}

@@ -76,6 +76,21 @@ def sync_status():
         except Exception:
             pass
 
+    # Bloqueio 656: 48h após o último erro 656
+    blocked_until = None
+    last_nfe_656 = next(
+        (l for l in logs if l["tipo"] == "nfe" and l["status"] == "error" and "656" in (l.get("mensagem") or "")),
+        None,
+    )
+    if last_nfe_656 and last_nfe_656.get("finalizado_em"):
+        try:
+            fin = datetime.fromisoformat(last_nfe_656["finalizado_em"])
+            end = fin + timedelta(hours=48)
+            if datetime.now() < end:
+                blocked_until = end.isoformat()
+        except Exception:
+            pass
+
     return {
         "running": _sync_status["running"],
         "last_result": _sync_status["last_result"],
@@ -86,6 +101,7 @@ def sync_status():
         "last_cte_hist": last_cte_hist,
         "next_scheduled": sched.get("next_scheduled"),
         "cooldown_until": cooldown_until,
+        "blocked_until": blocked_until,
     }
 
 
