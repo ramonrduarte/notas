@@ -62,10 +62,10 @@ def _extract_nfse_meta(xml_bytes: bytes) -> dict:
               root.findtext(f".//{{{ns}}}dhProc") or "")
         data_emissao = dh[:10] if dh else ""
 
-        # Número da NFS-e
+        # Número da NFS-e (nNFSe = número sequencial; cNFSe é código de verificação, não o número)
         numero = ""
         if inf is not None:
-            numero = inf.findtext(f"{{{ns}}}cNFSe") or inf.findtext(f"{{{ns}}}nNFSe") or ""
+            numero = inf.findtext(f"{{{ns}}}nNFSe") or ""
 
         # Prestador (emitente do serviço) — tenta xNome em prest e depois em emit
         emitente = ""
@@ -217,6 +217,7 @@ def sync_nfse(pfx_path: Path, password: str, cnpj: str, ult_nsu: str,
                     "destinatario": meta["destinatario"],
                     "valor":        meta["valor"],
                     "data_emissao": meta["data_emissao"],
+                    "numero":       meta["numero"],
                 })
                 total_saved += 1
 

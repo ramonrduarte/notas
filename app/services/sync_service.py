@@ -89,6 +89,9 @@ def _sync_tipo(tipo: str, pfx_path, password, cnpj, xml_dir, tp_amb, cuf,
                nfse_role: str = "ambas") -> dict:
     base = tipo.replace("_hist", "")
 
+    ult_nsu = database.get_ult_nsu(tipo)
+    log_id = database.start_sync_log(tipo, ult_nsu)
+
     # NF-e DistDFe: proteções contra cStat 656
     if base == "nfe" and not tipo.endswith("_hist"):
         # 1. Cooldown após último sucesso
@@ -103,6 +106,7 @@ def _sync_tipo(tipo: str, pfx_path, password, cnpj, xml_dir, tp_amb, cuf,
                     f"Aguarde ao menos {_NFE_COOLDOWN_HOURS}h entre sincronizações para evitar cStat 656."
                 )
                 logger.warning(msg)
+                database.finish_sync_log(log_id, "skipped", ult_nsu, 0, msg)
                 return {"status": "skipped", "mensagem": msg}
 
         # 2. Backoff longo após bloqueio 656 — cada tentativa pode prolongar o bloqueio no SEFAZ
@@ -118,10 +122,8 @@ def _sync_tipo(tipo: str, pfx_path, password, cnpj, xml_dir, tp_amb, cuf,
                     f"Aguardando mais {remaining_h}h para não prolongar o bloqueio."
                 )
                 logger.warning(msg)
+                database.finish_sync_log(log_id, "skipped", ult_nsu, 0, msg)
                 return {"status": "skipped", "mensagem": msg}
-
-    ult_nsu = database.get_ult_nsu(tipo)
-    log_id = database.start_sync_log(tipo, ult_nsu)
     logger.info(f"Iniciando sync {tipo.upper()} a partir de NSU {ult_nsu}")
 
     try:

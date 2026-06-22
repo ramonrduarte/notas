@@ -1167,14 +1167,18 @@ function pollSyncStatus() {
         if (result) {
           if (s.last_result?.status === 'success') {
             const r = s.last_result.result;
-            const hasError = Object.values(r || {}).some(v => v.status === 'error');
+            const hasError   = Object.values(r || {}).some(v => v.status === 'error');
+            const hasSkipped = Object.values(r || {}).some(v => v.status === 'skipped');
             const lines = Object.entries(r || {}).map(([k,v]) => {
               if (v.status === 'error') {
                 return `<span style="color:#fca5a5">❌ <strong>${k.toUpperCase()}</strong>: ${escHtml(v.mensagem)}</span>`;
               }
+              if (v.status === 'skipped') {
+                return `<span style="color:#a8a29e">⏭ <strong>${k.toUpperCase()}</strong>: ${escHtml(v.mensagem)}</span>`;
+              }
               return `<span style="color:#86efac">✓ <strong>${k.toUpperCase()}</strong>: ${v.documentos ?? 0} documento(s) — NSU final: ${v.nsu_final ?? '—'}</span>`;
             }).join('<br>');
-            const cls = hasError ? 'alert-warning' : 'alert-success';
+            const cls = hasError ? 'alert-warning' : hasSkipped && !Object.values(r||{}).some(v=>v.status==='success') ? 'alert-warning' : 'alert-success';
             result.innerHTML = `<div class="alert ${cls}">Sincronização concluída:<br>${lines}</div>`;
           } else if (s.last_result?.status === 'error') {
             result.innerHTML = `<div class="alert alert-error">❌ ${escHtml(s.last_result.mensagem)}</div>`;
@@ -1453,7 +1457,7 @@ function renderPage() {
       <td style="font-family:monospace;font-size:11px;overflow:hidden">
         <span style="display:flex;align-items:center;gap:4px">
           <span title="${escHtml(chaveShort)}" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1">${escHtml(chaveShort.slice(0,10)+'…'+chaveShort.slice(-10))}</span>
-          ${chaveShort.length===44 ? `<button onclick="copyChave('${escHtml(chaveShort)}',this)" title="Copiar chave completa" style="flex-shrink:0;background:none;border:none;cursor:pointer;color:var(--text-muted);padding:0;font-size:11px;line-height:1">⧉</button>` : ''}
+          ${chaveShort.length>=20 ? `<button onclick="copyChave('${escHtml(chaveShort)}',this)" title="Copiar chave completa" style="flex-shrink:0;background:none;border:none;cursor:pointer;color:var(--text-muted);padding:0;font-size:11px;line-height:1">⧉</button>` : ''}
         </span>
       </td>
       <td>${schemaLabel(d.schema)}</td>
@@ -1972,7 +1976,7 @@ function renderRecPage() {
       <td style="font-family:monospace;font-size:11px;overflow:hidden">
         <span style="display:flex;align-items:center;gap:4px">
           <span title="${escHtml(ch)}" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1">${chDisp}</span>
-          ${ch.length===44 ? `<button onclick="copyChave('${escHtml(ch)}',this)" title="Copiar chave" style="flex-shrink:0;background:none;border:none;cursor:pointer;color:var(--text-muted);padding:0;font-size:11px;line-height:1">⧉</button>` : ''}
+          ${ch.length>=20 ? `<button onclick="copyChave('${escHtml(ch)}',this)" title="Copiar chave" style="flex-shrink:0;background:none;border:none;cursor:pointer;color:var(--text-muted);padding:0;font-size:11px;line-height:1">⧉</button>` : ''}
         </span>
       </td>
       <td>${schemaLabel(d.schema)}</td>
