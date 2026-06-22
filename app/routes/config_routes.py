@@ -15,6 +15,7 @@ class ConfigUpdate(BaseModel):
     schedule_minute: int = 0
     ambiente: str = "1"
     uf_code: str = "43"
+    auto_sync: bool = True
     sync_nfe: bool = True
     sync_cte: bool = True
     sync_nfse: bool = True
@@ -43,6 +44,7 @@ def update_config(body: ConfigUpdate):
     cfg["schedule_minute"] = body.schedule_minute
     cfg["ambiente"] = body.ambiente
     cfg["uf_code"] = body.uf_code
+    cfg["auto_sync"] = body.auto_sync
     cfg["sync_nfe"] = body.sync_nfe
     cfg["sync_cte"] = body.sync_cte
     cfg["sync_nfse"] = body.sync_nfse
@@ -51,7 +53,7 @@ def update_config(body: ConfigUpdate):
     cfg["nfse_role"]     = body.nfse_role
     config.save_config(cfg)
 
-    sched.update_schedule(body.schedule_hour, body.schedule_minute)
+    sched.update_schedule(body.schedule_hour, body.schedule_minute, body.auto_sync)
     return {"ok": True}
 
 

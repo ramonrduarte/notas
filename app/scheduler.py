@@ -25,7 +25,7 @@ def _run_scheduled_sync():
         logger.error(f"Erro no sync agendado: {e}", exc_info=True)
 
 
-def start_scheduler(hour: int = 7, minute: int = 0):
+def start_scheduler(hour: int = 7, minute: int = 0, auto_sync: bool = True):
     _scheduler.remove_all_jobs()
     _scheduler.add_job(
         _run_scheduled_sync,
@@ -35,23 +35,33 @@ def start_scheduler(hour: int = 7, minute: int = 0):
     )
     if not _scheduler.running:
         _scheduler.start()
-    logger.info(f"Scheduler iniciado: sync diário às {hour:02d}:{minute:02d}")
+    if not auto_sync:
+        _scheduler.pause_job("daily_sync")
+    logger.info(f"Scheduler iniciado: sync diário às {hour:02d}:{minute:02d}, ativo={auto_sync}")
 
 
-def update_schedule(hour: int, minute: int):
+def update_schedule(hour: int, minute: int, auto_sync: bool = True):
     _scheduler.reschedule_job(
         "daily_sync",
         trigger=CronTrigger(hour=hour, minute=minute),
     )
-    logger.info(f"Schedule atualizado: sync diário às {hour:02d}:{minute:02d}")
+    job = _scheduler.get_job("daily_sync")
+    if job:
+        if auto_sync:
+            job.resume()
+        else:
+            job.pause()
+    logger.info(f"Schedule atualizado: sync diário às {hour:02d}:{minute:02d}, ativo={auto_sync}")
 
 
 def get_next_run_times() -> dict:
     result = {}
     try:
         job = _scheduler.get_job("daily_sync")
-        if job and job.next_run_time:
-            result["next_scheduled"] = job.next_run_time.isoformat()
+        if job:
+            result["auto_sync_paused"] = job.next_run_time is None
+            if job.next_run_time:
+                result["next_scheduled"] = job.next_run_time.isoformat()
     except Exception:
         pass
     return result

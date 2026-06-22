@@ -35,6 +35,7 @@ def load_config() -> dict:
         "schedule_minute": 0,
         "ambiente": "1",  # 1=producao, 2=homologacao
         "uf_code": "43",  # RS=43
+        "auto_sync": True,
         "sync_nfe": True,
         "sync_cte": True,
         "sync_nfse": True,

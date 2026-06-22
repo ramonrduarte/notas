@@ -204,6 +204,37 @@
     .status-row:last-of-type { border-bottom: none; }
     .status-detail { color: var(--text-muted); font-size: 12px; }
     .badge-skipped { background: #1c1917; color: #78716c; }
+
+    /* Toggle switch */
+    .toggle-wrap { display:inline-flex; align-items:center; gap:10px; cursor:pointer; user-select:none; }
+    .toggle-wrap input[type=checkbox] { display:none; }
+    .toggle-track {
+      width:46px; height:26px; border-radius:99px; background:var(--surface2);
+      position:relative; transition:background .2s; flex-shrink:0;
+    }
+    .toggle-track::after {
+      content:''; position:absolute; top:3px; left:3px;
+      width:20px; height:20px; border-radius:50%; background:#fff;
+      transition:transform .2s; box-shadow:0 1px 3px rgba(0,0,0,.4);
+    }
+    .toggle-wrap input:checked ~ .toggle-track { background:var(--primary); }
+    .toggle-wrap input:checked ~ .toggle-track::after { transform:translateX(20px); }
+    .toggle-label { font-size:14px; color:var(--text); }
+
+    /* Doc type toggles */
+    .doc-toggles { display:flex; gap:10px; flex-wrap:wrap; margin-top:4px; }
+    .doc-toggle-wrap { display:inline-flex; align-items:center; gap:8px; padding:8px 14px;
+      background:var(--surface2); border-radius:8px; cursor:pointer; user-select:none;
+      border:1px solid transparent; transition:border-color .15s; }
+    .doc-toggle-wrap:has(input:checked) { border-color:var(--primary); }
+    .doc-toggle-wrap input[type=checkbox] { display:none; }
+    .doc-toggle-icon { width:34px; height:20px; border-radius:99px; background:var(--surface);
+      position:relative; transition:background .2s; flex-shrink:0; }
+    .doc-toggle-icon::after { content:''; position:absolute; top:2px; left:2px;
+      width:16px; height:16px; border-radius:50%; background:#6b7280;
+      transition:transform .2s, background .2s; }
+    .doc-toggle-wrap:has(input:checked) .doc-toggle-icon { background:var(--primary); }
+    .doc-toggle-wrap:has(input:checked) .doc-toggle-icon::after { transform:translateX(14px); background:#fff; }
   </style>
 </head>
 <body>
@@ -378,20 +409,6 @@
             <option value="53">53 - Distrito Federal</option>
           </select>
         </div>
-        <div class="form-group">
-          <label>Tipos a Sincronizar</label>
-          <div class="flex gap-12 items-center" style="margin-top:8px">
-            <label style="display:flex;align-items:center;gap:6px;color:var(--text)">
-              <input type="checkbox" id="cfg-sync-nfe" checked /> NF-e
-            </label>
-            <label style="display:flex;align-items:center;gap:6px;color:var(--text)">
-              <input type="checkbox" id="cfg-sync-cte" checked /> CT-e
-            </label>
-            <label style="display:flex;align-items:center;gap:6px;color:var(--text)">
-              <input type="checkbox" id="cfg-sync-nfse" checked /> NFS-e
-            </label>
-          </div>
-        </div>
       </div>
       <div class="form-row">
         <div class="form-group">
@@ -422,18 +439,52 @@
     </div>
 
     <div class="form-section">
-      <h3>Agendamento</h3>
-      <p style="font-size:13px;color:var(--text-muted);margin-bottom:14px;">Horário para sincronização automática diária (fuso: America/Sao_Paulo).</p>
-      <div class="form-row">
-        <div class="form-group">
-          <label>Hora</label>
-          <input type="number" id="cfg-hour" min="0" max="23" value="7" />
+      <h3>Sincronização Automática</h3>
+
+      <div style="margin-bottom:20px">
+        <label class="toggle-wrap">
+          <input type="checkbox" id="cfg-auto-sync" checked />
+          <span class="toggle-track"></span>
+          <span class="toggle-label" id="cfg-auto-sync-label">Sincronização automática ativada</span>
+        </label>
+        <p style="font-size:12px;color:var(--text-muted);margin-top:6px;margin-left:56px">
+          Quando desativada, o agendamento diário fica pausado. A sincronização manual continua disponível.
+        </p>
+      </div>
+
+      <div id="auto-sync-fields">
+        <label style="font-size:13px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:10px">Documentos sincronizados</label>
+        <div class="doc-toggles" style="margin-bottom:20px">
+          <label class="doc-toggle-wrap">
+            <input type="checkbox" id="cfg-sync-nfe" checked />
+            <span class="doc-toggle-icon"></span>
+            <span class="badge badge-nfe" style="min-width:36px;text-align:center">NF-e</span>
+          </label>
+          <label class="doc-toggle-wrap">
+            <input type="checkbox" id="cfg-sync-cte" checked />
+            <span class="doc-toggle-icon"></span>
+            <span class="badge badge-cte" style="min-width:36px;text-align:center">CT-e</span>
+          </label>
+          <label class="doc-toggle-wrap">
+            <input type="checkbox" id="cfg-sync-nfse" checked />
+            <span class="doc-toggle-icon"></span>
+            <span class="badge badge-nfse" style="min-width:38px;text-align:center">NFS-e</span>
+          </label>
         </div>
-        <div class="form-group">
-          <label>Minuto</label>
-          <input type="number" id="cfg-minute" min="0" max="59" value="0" />
+
+        <label style="font-size:13px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:10px">Horário (fuso: America/Sao_Paulo)</label>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Hora</label>
+            <input type="number" id="cfg-hour" min="0" max="23" value="7" />
+          </div>
+          <div class="form-group">
+            <label>Minuto</label>
+            <input type="number" id="cfg-minute" min="0" max="59" value="0" />
+          </div>
         </div>
       </div>
+
       <div class="form-actions">
         <button class="btn btn-primary" onclick="saveConfig()">Salvar Configurações</button>
       </div>
@@ -1014,7 +1065,11 @@ function renderSyncStatus(s) {
     </div>`;
   }
 
-  if (s.next_scheduled && !s.running) {
+  if (s.auto_sync_paused) {
+    footer += `<div style="margin-top:8px;font-size:12px;color:var(--text-muted)">
+      ⏸ Sincronização automática <strong style="color:#f59e0b">pausada</strong> — use a sincronização manual ou ative em Configurações.
+    </div>`;
+  } else if (s.next_scheduled && !s.running) {
     footer += `<div style="margin-top:8px;font-size:12px;color:var(--text-muted)">
       📅 Próximo sync agendado: <strong style="color:var(--text)">${fmtDateShort(s.next_scheduled)}</strong>
     </div>`;
@@ -1210,6 +1265,9 @@ async function loadConfig() {
     document.getElementById('cfg-uf').value = cfg.uf_code || '43';
     document.getElementById('cfg-hour').value = cfg.schedule_hour ?? 7;
     document.getElementById('cfg-minute').value = cfg.schedule_minute ?? 0;
+    const autoSync = cfg.auto_sync !== false;
+    document.getElementById('cfg-auto-sync').checked = autoSync;
+    _updateAutoSyncLabel(autoSync);
     document.getElementById('cfg-sync-nfe').checked  = cfg.sync_nfe  !== false;
     document.getElementById('cfg-sync-cte').checked  = cfg.sync_cte  !== false;
     document.getElementById('cfg-sync-nfse').checked = cfg.sync_nfse !== false;
@@ -1288,6 +1346,16 @@ async function deleteCert() {
   loadConfig();
 }
 
+function _updateAutoSyncLabel(checked) {
+  const lbl = document.getElementById('cfg-auto-sync-label');
+  if (lbl) lbl.textContent = checked ? 'Sincronização automática ativada' : 'Sincronização automática desativada';
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const toggle = document.getElementById('cfg-auto-sync');
+  if (toggle) toggle.addEventListener('change', e => _updateAutoSyncLabel(e.target.checked));
+});
+
 async function saveConfig() {
   const body = {
     cnpj: document.getElementById('cfg-cnpj').value.replace(/\D/g,''),
@@ -1296,6 +1364,7 @@ async function saveConfig() {
     schedule_minute: parseInt(document.getElementById('cfg-minute').value),
     ambiente: document.getElementById('cfg-ambiente').value,
     uf_code: document.getElementById('cfg-uf').value,
+    auto_sync:      document.getElementById('cfg-auto-sync').checked,
     sync_nfe:       document.getElementById('cfg-sync-nfe').checked,
     sync_cte:       document.getElementById('cfg-sync-cte').checked,
     sync_nfse:      document.getElementById('cfg-sync-nfse').checked,

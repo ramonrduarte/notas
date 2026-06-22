@@ -22,6 +22,7 @@ async def lifespan(app: FastAPI):
     scheduler.start_scheduler(
         hour=cfg.get("schedule_hour", 7),
         minute=cfg.get("schedule_minute", 0),
+        auto_sync=cfg.get("auto_sync", True),
     )
     yield
     scheduler.stop_scheduler()
