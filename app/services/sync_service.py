@@ -80,7 +80,33 @@ def run_recovery(tipos: list[str], only_authorized: bool,
 
 
 _NFE_COOLDOWN_HOURS = 6
-_NFE_656_BACKOFF_HOURS = 48  # Após bloqueio 656, não tentar por 48h para não prolongar o bloqueio no SEFAZ
+_NFE_656_BASE_BACKOFF_HOURS = 48   # 1º bloqueio: 48h
+_NFE_656_MAX_BACKOFF_HOURS = 168   # Teto: 7 dias (progressão: 48h → 96h → 168h)
+
+
+def get_nfe_block_info(tipo: str = "nfe") -> dict:
+    """Retorna informações sobre bloqueio 656 ativo com backoff progressivo.
+
+    Retorna dict com chaves: is_blocked, backoff_hours, consecutive, blocked_until (ISO ou None).
+    Backoff cresce exponencialmente: 48h → 96h → 168h (teto de 7 dias).
+    """
+    last_err_msg, last_err_time = database.get_last_error_sync(tipo)
+    if not last_err_time or "656" not in (last_err_msg or ""):
+        return {"is_blocked": False, "backoff_hours": 0, "consecutive": 0, "blocked_until": None}
+
+    consecutive = database.count_consecutive_656_errors(tipo)
+    backoff_hours = min(_NFE_656_BASE_BACKOFF_HOURS * (2 ** (consecutive - 1)), _NFE_656_MAX_BACKOFF_HOURS)
+
+    last_err_dt = datetime.fromisoformat(last_err_time)
+    blocked_until_dt = last_err_dt + timedelta(hours=backoff_hours)
+
+    is_blocked = datetime.now() < blocked_until_dt
+    return {
+        "is_blocked": is_blocked,
+        "backoff_hours": backoff_hours,
+        "consecutive": consecutive,
+        "blocked_until": blocked_until_dt.isoformat() if is_blocked else None,
+    }
 
 
 def _sync_tipo(tipo: str, pfx_path, password, cnpj, xml_dir, tp_amb, cuf,
@@ -109,21 +135,22 @@ def _sync_tipo(tipo: str, pfx_path, password, cnpj, xml_dir, tp_amb, cuf,
                 database.finish_sync_log(log_id, "skipped", ult_nsu, 0, msg)
                 return {"status": "skipped", "mensagem": msg}
 
-        # 2. Backoff longo após bloqueio 656 — cada tentativa pode prolongar o bloqueio no SEFAZ
-        last_err_msg, last_err_time = database.get_last_error_sync(tipo)
-        if last_err_time and "656" in (last_err_msg or ""):
-            elapsed_block = datetime.now() - datetime.fromisoformat(last_err_time)
-            if elapsed_block < timedelta(hours=_NFE_656_BACKOFF_HOURS):
-                h = int(elapsed_block.total_seconds() // 3600)
-                m = int((elapsed_block.total_seconds() % 3600) // 60)
-                remaining_h = int((_NFE_656_BACKOFF_HOURS * 3600 - elapsed_block.total_seconds()) // 3600) + 1
-                msg = (
-                    f"NF-e bloqueada pelo SEFAZ (cStat 656) há {h}h{m:02d}min. "
-                    f"Aguardando mais {remaining_h}h para não prolongar o bloqueio."
-                )
-                logger.warning(msg)
-                database.finish_sync_log(log_id, "skipped", ult_nsu, 0, msg)
-                return {"status": "skipped", "mensagem": msg}
+        # 2. Backoff progressivo após bloqueio 656 (48h → 96h → 168h)
+        block_info = get_nfe_block_info(tipo)
+        if block_info["is_blocked"]:
+            elapsed_block = datetime.now() - datetime.fromisoformat(database.get_last_error_sync(tipo)[1])
+            h = int(elapsed_block.total_seconds() // 3600)
+            m = int((elapsed_block.total_seconds() % 3600) // 60)
+            remaining_secs = block_info["backoff_hours"] * 3600 - elapsed_block.total_seconds()
+            remaining_h = int(remaining_secs // 3600) + 1
+            msg = (
+                f"NF-e bloqueada pelo SEFAZ (cStat 656) há {h}h{m:02d}min "
+                f"(bloqueio consecutivo #{block_info['consecutive']}, aguardando {block_info['backoff_hours']}h). "
+                f"Próxima tentativa em {remaining_h}h para não prolongar o bloqueio."
+            )
+            logger.warning(msg)
+            database.finish_sync_log(log_id, "skipped", ult_nsu, 0, msg)
+            return {"status": "skipped", "mensagem": msg}
     logger.info(f"Iniciando sync {tipo.upper()} a partir de NSU {ult_nsu}")
 
     try:

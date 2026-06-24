@@ -158,6 +158,25 @@ def get_last_error_sync(tipo: str) -> tuple:
         return (row["mensagem"], row["finalizado_em"]) if row else (None, None)
 
 
+def count_consecutive_656_errors(tipo: str) -> int:
+    """Conta quantos erros 656 consecutivos existem desde o último sync bem-sucedido."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            """SELECT status, mensagem FROM sync_log
+               WHERE tipo = ? AND status IN ('success', 'error')
+               ORDER BY finalizado_em DESC
+               LIMIT 30""",
+            (tipo,),
+        ).fetchall()
+        count = 0
+        for row in rows:
+            if row["status"] == "success":
+                break
+            if row["status"] == "error" and "656" in (row["mensagem"] or ""):
+                count += 1
+        return count
+
+
 def list_sync_logs(limit: int = 50) -> list:
     with get_conn() as conn:
         rows = conn.execute(

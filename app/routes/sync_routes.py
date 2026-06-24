@@ -2,7 +2,7 @@ import threading
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from app import database
-from app.services.sync_service import run_sync, run_recovery
+from app.services.sync_service import run_sync, run_recovery, get_nfe_block_info
 
 router = APIRouter(prefix="/api/sync", tags=["sync"])
 
@@ -76,20 +76,9 @@ def sync_status():
         except Exception:
             pass
 
-    # Bloqueio 656: 48h após o último erro 656
-    blocked_until = None
-    last_nfe_656 = next(
-        (l for l in logs if l["tipo"] == "nfe" and l["status"] == "error" and "656" in (l.get("mensagem") or "")),
-        None,
-    )
-    if last_nfe_656 and last_nfe_656.get("finalizado_em"):
-        try:
-            fin = datetime.fromisoformat(last_nfe_656["finalizado_em"])
-            end = fin + timedelta(hours=48)
-            if datetime.now() < end:
-                blocked_until = end.isoformat()
-        except Exception:
-            pass
+    # Bloqueio 656: backoff progressivo (48h → 96h → 168h)
+    block_info = get_nfe_block_info("nfe")
+    blocked_until = block_info["blocked_until"]
 
     return {
         "running": _sync_status["running"],
